@@ -124,7 +124,7 @@ async def _async_main(args: argparse.Namespace) -> int:
     days = _window(config, args)
     dry_run = args.command == "preview"
     if dry_run:
-        logging.getLogger("bitrix_auto_manage").info("Предварительный просмотр без записей.")
+        logging.getLogger("bitrix_auto_manage").info("Preview run, no writes.")
     summary = await run_window(config, settings, days, dry_run=dry_run)
     print(summary.describe())
     return 0

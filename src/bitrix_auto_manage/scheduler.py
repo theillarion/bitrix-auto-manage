@@ -30,9 +30,9 @@ def _next_run(config: AppConfig, now: datetime) -> datetime:
 
 async def _run_once(config: AppConfig, settings: Settings, *, dry_run: bool) -> RunSummary:
     days = date_range(config, today_in(config))
-    logger.info("Прогон окна %s..%s (dry_run=%s)", days[0], days[-1], dry_run)
+    logger.info("Running window %s..%s (dry_run=%s)", days[0], days[-1], dry_run)
     summary = await run_window(config, settings, days, dry_run=dry_run)
-    logger.info("Итог: %s", summary.describe())
+    logger.info("Summary: %s", summary.describe())
     return summary
 
 
@@ -40,7 +40,7 @@ async def run_daemon(config: AppConfig, settings: Settings, *, once: bool = Fals
     """Run immediately, then repeat daily at schedule.apply_time local time."""
     if config.timezone != settings.timezone:
         logger.warning(
-            "timezone в YAML (%s) не совпадает с BITRIX_TIMEZONE (%s); выровняйте настройки.",
+            "YAML timezone (%s) differs from BITRIX_TIMEZONE (%s); align the settings.",
             config.timezone,
             settings.timezone,
         )
@@ -49,7 +49,7 @@ async def run_daemon(config: AppConfig, settings: Settings, *, once: bool = Fals
             summary = await _run_once(config, settings, dry_run=dry_run)
         except TimeManagerError as error:
             summary = RunSummary(failed=1)
-            logger.error("Прогон не удался: %s", error)
+            logger.error("Window run failed: %s", error)
         if once:
             raise SystemExit(0 if summary.ok else 1)
         zone = ZoneInfo(config.timezone)
@@ -58,8 +58,8 @@ async def run_daemon(config: AppConfig, settings: Settings, *, once: bool = Fals
             pause = _next_run(config, now) - now
         else:
             pause = timedelta(minutes=config.schedule.retry_minutes)
-            logger.info("Повторная попытка через %d минут.", config.schedule.retry_minutes)
-        logger.info("Следующий прогон через %s.", _format_pause(pause))
+            logger.info("Retrying in %d minutes.", config.schedule.retry_minutes)
+        logger.info("Next run in %s.", _format_pause(pause))
         await asyncio.sleep(pause.total_seconds())
 
 

@@ -56,8 +56,8 @@ async def run_window(config: AppConfig, settings: Settings, days: list[date], *,
                     result = await _apply_spec(manager, task, spec, dry_run=dry_run)
                 except UncertainWriteError as error:
                     logger.error(
-                        "%s: %s Повторная отправка заблокирована SDK; окно продолжается. "
-                        "Проверьте портал и выполните `bitrix-time resolve OPERATION_ID --confirmed-not-created`.",
+                        "%s: %s Automatic retry is blocked by the SDK; the window continues. "
+                        "Check the portal and run `bitrix-time resolve OPERATION_ID --confirmed-not-created`.",
                         label,
                         error,
                     )
@@ -65,7 +65,7 @@ async def run_window(config: AppConfig, settings: Settings, days: list[date], *,
                     summary.errors.append(f"{label}: uncertain")
                     continue
                 except NotFoundError as error:
-                    logger.info("Пропущено: %s", error)
+                    logger.info("Skipped: %s", error)
                     summary.skipped += 1
                     continue
                 except TimeManagerError as error:
@@ -83,7 +83,7 @@ async def _apply_spec(manager: TimeManager, task: TaskSection, spec: Spec, *, dr
         existing = await manager.list_time_entries(spec.day)
         if existing:
             logger.info(
-                "%s: за день уже есть %d записей учета; пропуск (on_existing_entries: skip).",
+                "%s: day already has %d time entries; skipping (on_existing_entries: skip).",
                 spec.day.isoformat(),
                 len(existing),
             )
