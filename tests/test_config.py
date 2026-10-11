@@ -41,21 +41,21 @@ class TestParseWeekdays:
         assert parse_weekdays("sun") == frozenset({6})
 
     def test_empty_rejected(self) -> None:
-        with pytest.raises(ValueError, match="пуст"):
+        with pytest.raises(ValueError, match="empty"):
             parse_weekdays([])
 
     def test_unknown_name_rejected(self) -> None:
-        with pytest.raises(ValueError, match="Неизвестный день"):
+        with pytest.raises(ValueError, match="Unknown weekday"):
             parse_weekdays(["funday"])
 
 
 class TestTaskSection:
     def test_workday_requires_interval(self) -> None:
-        with pytest.raises(ValidationError, match="start и end"):
+        with pytest.raises(ValidationError, match="requires start and end"):
             TaskSection.model_validate({"kind": "workday", "days": ["mon"], "start": "09:00"})
 
     def test_end_after_start(self) -> None:
-        with pytest.raises(ValidationError, match="позже start"):
+        with pytest.raises(ValidationError, match="later than start"):
             TaskSection.model_validate({"kind": "remote", "days": ["mon"], "start": "18:00", "end": "09:00"})
 
     def test_time_entry_requires_contract(self) -> None:
@@ -128,7 +128,7 @@ tasks:
     def test_empty_directory_rejected(self, tmp_path: Path) -> None:
         from bitrix_time_manager.errors import ConfigurationError
 
-        with pytest.raises(ConfigurationError, match="нет YAML"):
+        with pytest.raises(ConfigurationError, match="No settings YAML"):
             load_config([tmp_path])
 
     def test_invalid_yaml_rejected(self, tmp_path: Path) -> None:
@@ -136,7 +136,7 @@ tasks:
 
         path = tmp_path / "bad.yaml"
         path.write_text("tasks: [unclosed", encoding="utf-8")
-        with pytest.raises(ConfigurationError, match="разобрать"):
+        with pytest.raises(ConfigurationError, match="Failed to parse YAML"):
             load_config([path])
 
     def test_duplicate_kind_merge_replaces_task_list_entry(self, tmp_path: Path) -> None:

@@ -38,7 +38,7 @@ def parse_weekdays(value: Any) -> frozenset[int]:
     elif isinstance(value, list) and all(isinstance(item, str) for item in value):
         items = value
     else:
-        raise ValueError("Дни недели задаются строкой или списком строк, например [mon-fri, sat].")
+        raise ValueError("Weekdays must be a string or a list of strings, e.g. [mon-fri, sat].")
     days: set[int] = set()
     for item in items:
         token = item.strip().lower()
@@ -46,7 +46,7 @@ def parse_weekdays(value: Any) -> frozenset[int]:
         if match:
             begin, end = WEEKDAY_NAMES.get(match[1]), WEEKDAY_NAMES.get(match[2])
             if begin is None or end is None:
-                raise ValueError(f"Неизвестные дни недели: {item!r}. Допустимо: {', '.join(WEEKDAY_NAMES)}.")
+                raise ValueError(f"Unknown weekday names: {item!r}. Allowed: {', '.join(WEEKDAY_NAMES)}.")
             if begin <= end:
                 days.update(range(begin, end + 1))
             else:
@@ -55,10 +55,10 @@ def parse_weekdays(value: Any) -> frozenset[int]:
             continue
         day = WEEKDAY_NAMES.get(token)
         if day is None:
-            raise ValueError(f"Неизвестный день недели: {item!r}. Допустимо: {', '.join(WEEKDAY_NAMES)}.")
+            raise ValueError(f"Unknown weekday: {item!r}. Allowed: {', '.join(WEEKDAY_NAMES)}.")
         days.add(day)
     if not days:
-        raise ValueError("Список дней недели пуст.")
+        raise ValueError("The weekday list is empty.")
     return frozenset(days)
 
 
@@ -112,14 +112,14 @@ class TaskSection(BaseModel):
     def check_kind_fields(self) -> Self:
         if self.kind in {"workday", "remote"}:
             if self.start is None or self.end is None:
-                raise ValueError(f"Для kind: {self.kind} обязательны start и end, например '09:00' и '18:00'.")
+                raise ValueError(f"kind: {self.kind} requires start and end, e.g. '09:00' and '18:00'.")
             if self.end <= self.start:
-                raise ValueError("end должен быть позже start в пределах одного дня.")
+                raise ValueError("end must be later than start within a single day.")
             return self
         if self.contract is None or not self.description:
-            raise ValueError("Для kind: time_entry обязательны contract (entity_type, id) и description.")
+            raise ValueError("kind: time_entry requires contract (entity_type, id) and description.")
         if self.hours * 60 + self.minutes <= 0:
-            raise ValueError("Длительность учета времени должна быть больше нуля, например hours: 7, minutes: 30.")
+            raise ValueError("Time entry duration must be greater than zero, e.g. hours: 7, minutes: 30.")
         return self
 
 
@@ -153,12 +153,12 @@ def collect_config_files(paths: list[Path]) -> list[Path]:
             found = sorted([*path.glob("*.yaml"), *path.glob("*.yml")])
             found = [item for item in found if ".example." not in item.name]
             if not found:
-                raise ConfigurationError(f"В каталоге {path} нет YAML-файлов с настройками.")
+                raise ConfigurationError(f"No settings YAML files found in {path}.")
             files.extend(found)
         elif path.is_file():
             files.append(path)
         else:
-            raise ConfigurationError(f"Путь настроек не найден: {path}")
+            raise ConfigurationError(f"Settings path not found: {path}")
     return files
 
 
@@ -169,11 +169,11 @@ def load_config(paths: list[Path]) -> AppConfig:
         try:
             loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
         except yaml.YAMLError as error:
-            raise ConfigurationError(f"Не удалось разобрать YAML-файл {path}: {error}") from None
+            raise ConfigurationError(f"Failed to parse YAML file {path}: {error}") from None
         if loaded is None:
             continue
         if not isinstance(loaded, dict):
-            raise ConfigurationError(f"YAML-файл {path} должен содержать отображение настроек.")
+            raise ConfigurationError(f"YAML file {path} must contain a settings mapping.")
         data = _merge_dicts(data, loaded)
     try:
         return AppConfig.model_validate(data)

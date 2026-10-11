@@ -77,7 +77,7 @@ def _parse_date(value: str) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"Некорректная дата {value!r}; нужен формат YYYY-MM-DD.") from None
+        raise argparse.ArgumentTypeError(f"Invalid date {value!r}; expected YYYY-MM-DD.") from None
 
 
 def _default_config_paths() -> list[Path]:
@@ -89,7 +89,7 @@ def _window(config: AppConfig, args: argparse.Namespace) -> list[date]:
     if getattr(args, "date", None) is not None:
         length = args.days if args.days is not None else 1
         if length < 1:
-            raise SystemExit("--days должен быть не меньше 1.")
+            raise SystemExit("--days must be at least 1.")
         return [args.date + timedelta(days=offset) for offset in range(length)]
     if args.days is not None:
         return [today + timedelta(days=offset) for offset in range(args.days)]
