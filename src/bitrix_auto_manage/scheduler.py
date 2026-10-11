@@ -2,22 +2,18 @@
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from bitrix_time_manager.config import Settings
 from bitrix_time_manager.errors import TimeManagerError
 
-from bitrix_auto_manage.config import AppConfig, date_range
+from bitrix_auto_manage.config import AppConfig, date_range, today_in
 from bitrix_auto_manage.runner import RunSummary, run_window
 
 logger = logging.getLogger("bitrix_auto_manage")
 
 STARTUP_GRACE = timedelta(seconds=30)
-
-
-def _today(config: AppConfig) -> date:
-    return datetime.now(ZoneInfo(config.timezone)).date()
 
 
 def _next_run(config: AppConfig, now: datetime) -> datetime:
@@ -33,7 +29,7 @@ def _next_run(config: AppConfig, now: datetime) -> datetime:
 
 
 async def _run_once(config: AppConfig, settings: Settings, *, dry_run: bool) -> RunSummary:
-    days = date_range(config, _today(config))
+    days = date_range(config, today_in(config))
     logger.info("Прогон окна %s..%s (dry_run=%s)", days[0], days[-1], dry_run)
     summary = await run_window(config, settings, days, dry_run=dry_run)
     logger.info("Итог: %s", summary.describe())

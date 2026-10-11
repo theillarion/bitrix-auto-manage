@@ -1,9 +1,10 @@
 """Tests for YAML config parsing, merging and planning."""
 
-from datetime import date, time
+from datetime import date, time, timedelta
 from pathlib import Path
 
 import pytest
+from bitrix_time_manager.models import RemoteWorkCreate, TimeEntryCreate, WorkdayCreate
 from pydantic import ValidationError
 
 from bitrix_auto_manage.config import (
@@ -180,6 +181,18 @@ class TestPlanning:
     def test_weekend_without_tasks(self, config: AppConfig) -> None:
         saturday = date(2026, 10, 17)
         assert plan_for_date(config, saturday) == []
+
+    def test_two_month_invariant(self, config: AppConfig) -> None:
+        for offset in range(60):
+            day = date(2026, 10, 11) + timedelta(days=offset)
+            weekday = day.weekday()
+            for spec in plan_for_date(config, day):
+                if isinstance(spec, RemoteWorkCreate):
+                    assert weekday == 4
+                elif isinstance(spec, (TimeEntryCreate, WorkdayCreate)):
+                    assert weekday <= 4
+                else:
+                    pytest.fail(f"Незапланированный вид операции: {spec}")
 
     def test_time_entry_values(self, config: AppConfig) -> None:
         monday = date(2026, 10, 12)

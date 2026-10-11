@@ -1,7 +1,7 @@
 """YAML configuration models, loading and merging for multiple files."""
 
 import re
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Literal, Self
 
@@ -177,6 +177,13 @@ def load_config(paths: list[Path]) -> AppConfig:
         return AppConfig.model_validate(data)
     except ValueError as error:
         raise ConfigurationError(str(error)) from None
+
+
+def today_in(config: AppConfig) -> date:
+    """Current calendar date in the configured timezone, not the host zone."""
+    from zoneinfo import ZoneInfo
+
+    return datetime.now(ZoneInfo(config.timezone)).date()
 
 
 def date_range(config: AppConfig, today: date) -> list[date]:

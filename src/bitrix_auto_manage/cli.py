@@ -13,7 +13,7 @@ from bitrix_time_manager.config import Settings
 from bitrix_time_manager.errors import TimeManagerError
 from bitrix_time_manager.service import TimeManager
 
-from bitrix_auto_manage.config import AppConfig, date_range, load_config
+from bitrix_auto_manage.config import AppConfig, date_range, load_config, today_in
 from bitrix_auto_manage.runner import run_window, show_day
 from bitrix_auto_manage.scheduler import run_daemon
 
@@ -85,15 +85,15 @@ def _default_config_paths() -> list[Path]:
 
 
 def _window(config: AppConfig, args: argparse.Namespace) -> list[date]:
+    today = today_in(config)
     if getattr(args, "date", None) is not None:
         length = args.days if args.days is not None else 1
         if length < 1:
             raise SystemExit("--days должен быть не меньше 1.")
         return [args.date + timedelta(days=offset) for offset in range(length)]
     if args.days is not None:
-        today = date.today()
         return [today + timedelta(days=offset) for offset in range(args.days)]
-    return date_range(config, date.today())
+    return date_range(config, today)
 
 
 def _load_settings(args: argparse.Namespace) -> Settings:

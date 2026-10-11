@@ -52,31 +52,39 @@ async def run_window(config: AppConfig, settings: Settings, days: list[date], *,
         for day in days:
             specs = plan_for_date(config, day)
             for spec in specs:
-                result = await _apply_spec(manager, spec, dry_run=dry_run)
+                label = f"{day.isoformat()} {type(spec).__name__}"
+                try:
+                    result = await _apply_spec(manager, spec, dry_run=dry_run)
+                except UncertainWriteError as error:
+                    logger.error(
+                        "%s: %s Повторная отправка заблокирована SDK; окно продолжается. "
+                        "Проверьте портал и выполните `bitrix-time resolve OPERATION_ID --confirmed-not-created`.",
+                        label,
+                        error,
+                    )
+                    summary.uncertain += 1
+                    summary.errors.append(f"{label}: uncertain")
+                    continue
+                except NotFoundError as error:
+                    logger.info("Пропущено: %s", error)
+                    summary.skipped += 1
+                    continue
+                except TimeManagerError as error:
+                    logger.warning("Ошибка операции: %s", error)
+                    summary.skipped += 1
+                    summary.errors.append(f"{label}: {error}")
+                    continue
                 _collect(summary, day, spec, result)
     return summary
 
 
 async def _apply_spec(manager: TimeManager, spec: Spec, *, dry_run: bool) -> OperationResult | None:
     key = idempotency_key(spec)
-    try:
-        if isinstance(spec, WorkdayCreate):
-            return await manager.create_workday(spec, dry_run=dry_run, idempotency_key=key)
-        if isinstance(spec, RemoteWorkCreate):
-            return await manager.create_remote_work(spec, dry_run=dry_run, idempotency_key=key)
-        return await manager.create_time_entry(spec, dry_run=dry_run, idempotency_key=key)
-    except NotFoundError as error:
-        logger.info("Пропущено: %s", error)
-        return None
-    except UncertainWriteError:
-        logger.error(
-            "Результат записи неизвестен; повторная отправка заблокирована SDK. "
-            "Проверьте портал и выполните `bitrix-time resolve OPERATION_ID --confirmed-not-created` вручную."
-        )
-        raise
-    except TimeManagerError as error:
-        logger.warning("Ошибка операции: %s", error)
-        return None
+    if isinstance(spec, WorkdayCreate):
+        return await manager.create_workday(spec, dry_run=dry_run, idempotency_key=key)
+    if isinstance(spec, RemoteWorkCreate):
+        return await manager.create_remote_work(spec, dry_run=dry_run, idempotency_key=key)
+    return await manager.create_time_entry(spec, dry_run=dry_run, idempotency_key=key)
 
 
 def _collect(summary: RunSummary, day: date, spec: Spec, result: OperationResult | None) -> None:
