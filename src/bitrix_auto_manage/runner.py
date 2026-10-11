@@ -69,7 +69,7 @@ async def run_window(config: AppConfig, settings: Settings, days: list[date], *,
                     summary.skipped += 1
                     continue
                 except TimeManagerError as error:
-                    logger.warning("Ошибка операции: %s", error)
+                    logger.warning("%s: %s", label, error)
                     summary.skipped += 1
                     summary.errors.append(f"{label}: {error}")
                     continue
