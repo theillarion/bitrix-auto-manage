@@ -12,7 +12,7 @@ from bitrix_time_manager.errors import NotFoundError, TimeManagerError, Uncertai
 from bitrix_time_manager.models import OperationResult, RemoteWorkCreate, TimeEntryCreate, WorkdayCreate
 from bitrix_time_manager.service import TimeManager
 
-from bitrix_auto_manage.config import AppConfig, idempotency_key, plan_for_date
+from bitrix_auto_manage.config import AppConfig, TaskSection, idempotency_key, plan_for_date
 
 logger = logging.getLogger("bitrix_auto_manage")
 
@@ -50,11 +50,10 @@ async def run_window(config: AppConfig, settings: Settings, days: list[date], *,
     async with BitrixClient(settings) as client:
         manager = TimeManager(client)
         for day in days:
-            specs = plan_for_date(config, day)
-            for spec in specs:
+            for task, spec in plan_for_date(config, day):
                 label = f"{day.isoformat()} {type(spec).__name__}"
                 try:
-                    result = await _apply_spec(manager, spec, dry_run=dry_run)
+                    result = await _apply_spec(manager, task, spec, dry_run=dry_run)
                 except UncertainWriteError as error:
                     logger.error(
                         "%s: %s Повторная отправка заблокирована SDK; окно продолжается. "
@@ -78,8 +77,17 @@ async def run_window(config: AppConfig, settings: Settings, days: list[date], *,
     return summary
 
 
-async def _apply_spec(manager: TimeManager, spec: Spec, *, dry_run: bool) -> OperationResult | None:
+async def _apply_spec(manager: TimeManager, task: TaskSection, spec: Spec, *, dry_run: bool) -> OperationResult | None:
     key = idempotency_key(spec)
+    if isinstance(spec, TimeEntryCreate) and task.on_existing_entries == "skip":
+        existing = await manager.list_time_entries(spec.day)
+        if existing:
+            logger.info(
+                "%s: за день уже есть %d записей учета; пропуск (on_existing_entries: skip).",
+                spec.day.isoformat(),
+                len(existing),
+            )
+            return None
     if isinstance(spec, WorkdayCreate):
         return await manager.create_workday(spec, dry_run=dry_run, idempotency_key=key)
     if isinstance(spec, RemoteWorkCreate):

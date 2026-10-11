@@ -96,6 +96,7 @@ class TaskSection(BaseModel):
     description: str | None = None
     hours: int = Field(default=0, ge=0, le=24)
     minutes: Literal[0, 30] = 0
+    on_existing_entries: Literal["skip", "append"] = "skip"
 
     @field_validator("days", mode="before")
     @classmethod
@@ -145,11 +146,12 @@ def _merge_dicts(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
 
 
 def collect_config_files(paths: list[Path]) -> list[Path]:
-    """Expand directories into their YAML files in sorted order."""
+    """Expand directories into their YAML files in sorted order, skipping examples."""
     files: list[Path] = []
     for path in paths:
         if path.is_dir():
             found = sorted([*path.glob("*.yaml"), *path.glob("*.yml")])
+            found = [item for item in found if ".example." not in item.name]
             if not found:
                 raise ConfigurationError(f"В каталоге {path} нет YAML-файлов с настройками.")
             files.extend(found)
@@ -193,28 +195,31 @@ def date_range(config: AppConfig, today: date) -> list[date]:
     return [start + timedelta(days=offset) for offset in range((stop - start).days + 1)]
 
 
-def plan_for_date(config: AppConfig, day: date) -> list[WorkdayCreate | RemoteWorkCreate | TimeEntryCreate]:
+def plan_for_date(
+    config: AppConfig, day: date
+) -> list[tuple[TaskSection, WorkdayCreate | RemoteWorkCreate | TimeEntryCreate]]:
     """Specs scheduled for this calendar day, ordered workday, remote, time entry."""
-    specs: list[WorkdayCreate | RemoteWorkCreate | TimeEntryCreate] = []
+    plans: list[tuple[TaskSection, WorkdayCreate | RemoteWorkCreate | TimeEntryCreate]] = []
     for task in sorted(config.tasks, key=lambda item: KIND_ORDER[item.kind]):
         if day.weekday() not in task.days:
             continue
         if task.kind == "workday":
-            specs.append(WorkdayCreate(day=day, start=task.start, end=task.end, comment=task.comment))
+            spec: WorkdayCreate | RemoteWorkCreate | TimeEntryCreate = WorkdayCreate(
+                day=day, start=task.start, end=task.end, comment=task.comment
+            )
         elif task.kind == "remote":
-            specs.append(RemoteWorkCreate(day=day, start=task.start, end=task.end, comment=task.comment))
+            spec = RemoteWorkCreate(day=day, start=task.start, end=task.end, comment=task.comment)
         else:
             assert task.contract is not None and task.description is not None
-            specs.append(
-                TimeEntryCreate(
-                    day=day,
-                    contract=ContractRef(entity_type_id=task.contract.entity_type, item_id=task.contract.id),
-                    description=task.description,
-                    hours=task.hours,
-                    minutes=task.minutes,
-                )
+            spec = TimeEntryCreate(
+                day=day,
+                contract=ContractRef(entity_type_id=task.contract.entity_type, item_id=task.contract.id),
+                description=task.description,
+                hours=task.hours,
+                minutes=task.minutes,
             )
-    return specs
+        plans.append((task, spec))
+    return plans
 
 
 def idempotency_key(spec: WorkdayCreate | RemoteWorkCreate | TimeEntryCreate) -> str:

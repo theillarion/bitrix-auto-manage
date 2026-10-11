@@ -116,6 +116,15 @@ tasks:
         config = load_config([tmp_path])
         assert config.schedule.horizon_days == 5
 
+    def test_directory_skips_example_files(self, tmp_path: Path) -> None:
+        (tmp_path / "10-base.yaml").write_text(MINIMAL, encoding="utf-8")
+        (tmp_path / "schedule.example.yaml").write_text(
+            "tasks:\n  - kind: remote\n    days: [sun]\n    start: '01:00'\n    end: '02:00'\n",
+            encoding="utf-8",
+        )
+        config = load_config([tmp_path])
+        assert [task.kind for task in config.tasks] == ["workday"]
+
     def test_empty_directory_rejected(self, tmp_path: Path) -> None:
         from bitrix_time_manager.errors import ConfigurationError
 
@@ -175,7 +184,7 @@ class TestPlanning:
     def test_order_and_filtering(self, config: AppConfig) -> None:
         friday = date(2026, 10, 16)
         assert date(2026, 10, 16).weekday() == 4
-        kinds = [type(spec).__name__ for spec in plan_for_date(config, friday)]
+        kinds = [type(spec).__name__ for _, spec in plan_for_date(config, friday)]
         assert kinds == ["WorkdayCreate", "RemoteWorkCreate", "TimeEntryCreate"]
 
     def test_weekend_without_tasks(self, config: AppConfig) -> None:
@@ -186,7 +195,7 @@ class TestPlanning:
         for offset in range(60):
             day = date(2026, 10, 11) + timedelta(days=offset)
             weekday = day.weekday()
-            for spec in plan_for_date(config, day):
+            for _, spec in plan_for_date(config, day):
                 if isinstance(spec, RemoteWorkCreate):
                     assert weekday == 4
                 elif isinstance(spec, (TimeEntryCreate, WorkdayCreate)):
@@ -196,11 +205,36 @@ class TestPlanning:
 
     def test_time_entry_values(self, config: AppConfig) -> None:
         monday = date(2026, 10, 12)
-        specs = plan_for_date(config, monday)
-        entry = specs[-1]
+        plans = plan_for_date(config, monday)
+        task, entry = plans[-1]
+        assert task.on_existing_entries == "skip"
         assert entry.contract is not None
         assert entry.contract.crm_value == "T512_2"
         assert entry.day == monday
+
+    def test_append_policy_accepted_and_invalid_rejected(self) -> None:
+        task = TaskSection.model_validate(
+            {
+                "kind": "time_entry",
+                "days": ["mon"],
+                "contract": {"entity_type": 1298, "id": 2},
+                "description": "Работа",
+                "hours": 1,
+                "on_existing_entries": "append",
+            }
+        )
+        assert task.on_existing_entries == "append"
+        with pytest.raises(ValidationError):
+            TaskSection.model_validate(
+                {
+                    "kind": "time_entry",
+                    "days": ["mon"],
+                    "contract": {"entity_type": 1298, "id": 2},
+                    "description": "Работа",
+                    "hours": 1,
+                    "on_existing_entries": "replace",
+                }
+            )
 
 
 class TestWindowAndKey:
