@@ -16,7 +16,7 @@ Time-менеджер Bitrix24 требует ручной рутины: сот�
 - каждая операция попадает в SQLite-журнал — потерянный ответ сети
   не приводит к задвоению или потере записи.
 
-Проект — обертка над [sdk-python-bitrix-time-manager](../sdk-python-bitrix-time-manager):
+Проект — обертка над [sdk-bitrix-time-manager](../sdk-bitrix-time-manager):
 там REST-клиент, идемпотентность и журнал операций; здесь — YAML-конфигурация,
 планировщик и команды `bitrix-auto`.
 
@@ -48,7 +48,7 @@ docker compose logs -f                # смотреть журнал прого
 через `retry_minutes`.
 
 SDK подключается в контейнер монтированием соседнего каталога
-`../sdk-python-bitrix-time-manager` в `/opt/sdk`. Если он лежит в другом месте,
+`../sdk-bitrix-time-manager` в `/opt/sdk`. Если он лежит в другом месте,
 задайте переменную `BITRIX_SDK_PATH` в `.env`.
 
 ## Локальный запуск без Docker (macOS, Linux, Windows)
@@ -56,7 +56,7 @@ SDK подключается в контейнер монтированием с
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
-pip install -e '../sdk-python-bitrix-time-manager' -e .
+pip install -e '../sdk-bitrix-time-manager' -e .
 cp .env.example .env
 bitrix-auto preview --config config/schedule.example.yaml --date 2026-10-19 --days 1
 bitrix-auto apply   --config config/schedule.yaml

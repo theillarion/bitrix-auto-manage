@@ -12,4 +12,4 @@ services:
     volumes:
       - ./config:/app/config:ro
       - ./state:/app/state
-      - ${BITRIX_SDK_PATH:-../sdk-python-bitrix-time-manager}:/opt/sdk:ro
+      - ${BITRIX_SDK_PATH:-../sdk-bitrix-time-manager}:/opt/sdk:ro

@@ -48,5 +48,5 @@
   расписания.
 - Разработка: 25 offline-тестов (pytest), ruff, mypy strict.
 
-[Unreleased]: https://github.com/theillarion/bitrix-auto-commit/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/theillarion/bitrix-auto-commit/releases/tag/v0.1.0
+[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/theillarion/bitrix-auto-manage/releases/tag/v0.1.0

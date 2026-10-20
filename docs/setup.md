@@ -275,7 +275,7 @@ docker compose run --rm --entrypoint python bitrix-auto \
   -m bitrix_time_manager contracts 'Общие задачи' --type 1298
 ```
 
-Локально после `pip install -e '../sdk-python-bitrix-time-manager'` доступна
+Локально после `pip install -e '../sdk-bitrix-time-manager'` доступна
 та же команда в виде утилиты `bitrix-time`:
 
 ```bash
@@ -310,7 +310,7 @@ config/schedule.yaml --date 2026-10-23 --days 1`.
 - [CHANGELOG.md](../CHANGELOG.md) — история версий и правила версионирования.
 - `config/schedule.example.yaml` — шаблон расписания с комментариями;
   копируется в `config/schedule.yaml` и правится под себя.
-- `../sdk-python-bitrix-time-manager/README.md` — README соседнего SDK:
+- `../sdk-bitrix-time-manager/README.md` — README соседнего SDK:
   Python API, CLI `bitrix-time`, поведение портала, журнал операций и разбор
   нештатных ситуаций. SDK лежит в отдельном репозитории рядом с этим (в Docker
   монтируется в `/opt/sdk`), путь указан для локальной копии обоих проектов.
