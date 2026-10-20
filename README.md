@@ -111,7 +111,7 @@ tasks:
     days: [mon-fri]
     contract:
       entity_type: 1298        # 1048/1052 — карточки договоров, 1298 — шаблоны
-      id: 2
+      id: 123
     description: "Общие задачи"
     hours: 7
     minutes: 30                # только 0 или 30

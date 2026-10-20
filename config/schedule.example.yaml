@@ -33,7 +33,7 @@ tasks:
     days: [mon-fri]
     contract:
       entity_type: 1298
-      id: 2
+      id: 123
     description: "Общие задачи"
     hours: 7
     minutes: 30
