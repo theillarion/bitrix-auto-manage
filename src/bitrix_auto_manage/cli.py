@@ -13,6 +13,7 @@ from bitrix_time_manager.config import Settings
 from bitrix_time_manager.errors import TimeManagerError
 from bitrix_time_manager.service import TimeManager
 
+from bitrix_auto_manage import __version__
 from bitrix_auto_manage.config import AppConfig, date_range, load_config, today_in
 from bitrix_auto_manage.runner import run_window, show_day
 from bitrix_auto_manage.scheduler import run_daemon
@@ -23,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="bitrix-auto",
         description="Автоматизация Time-менеджера Bitrix по YAML-настройкам.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
         "--config",
