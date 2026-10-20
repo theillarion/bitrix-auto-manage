@@ -204,10 +204,12 @@ def plan_for_date(
         if day.weekday() not in task.days:
             continue
         if task.kind == "workday":
+            assert task.start is not None and task.end is not None
             spec: WorkdayCreate | RemoteWorkCreate | TimeEntryCreate = WorkdayCreate(
                 day=day, start=task.start, end=task.end, comment=task.comment
             )
         elif task.kind == "remote":
+            assert task.start is not None and task.end is not None
             spec = RemoteWorkCreate(day=day, start=task.start, end=task.end, comment=task.comment)
         else:
             assert task.contract is not None and task.description is not None

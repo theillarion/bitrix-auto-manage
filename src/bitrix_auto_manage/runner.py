@@ -4,7 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field, replace
 from datetime import date
-from typing import Any, TypeAlias, cast
+from typing import Any, TypeAlias
 
 from bitrix_time_manager.client import BitrixClient
 from bitrix_time_manager.config import Settings
@@ -125,6 +125,6 @@ async def show_day(settings: Settings, day: date) -> dict[str, Any]:
 
 async def _safe_entries(manager: TimeManager, day: date) -> list[dict[str, Any]] | str:
     try:
-        return cast(list[dict[str, Any]], await manager.list_time_entries(day))
+        return await manager.list_time_entries(day)
     except TimeManagerError as error:
         return str(error)
