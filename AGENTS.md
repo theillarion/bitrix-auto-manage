@@ -17,7 +17,7 @@
 
 Never:
 - реальные данные портала (домен, USER_ID, ID дней и карточек, названия задач, URL вебхуков) — только плейсхолдеры;
-- `.env`, `state/`, живые `config/schedule.yaml`, `config/*.local.yaml`;
+- `.env`, `state/`, `.state/`, живые `config/schedule.yaml`, `config/*.local.yaml`;
 - `Literal[1048, 1052, 1298]` в `src/bitrix_auto_manage/config.py` — типы смарт-процессов портала: не менять;
 - force push, переписывание истории, релизы без явной команды.
 Ask first:

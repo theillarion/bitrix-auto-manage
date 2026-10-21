@@ -1,6 +1,7 @@
 .env
 .venv/
 state/
+.state/
 config/schedule.yaml
 config/*.local.yaml
 __pycache__/

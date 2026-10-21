@@ -67,6 +67,13 @@ bitrix-auto daemon  --config config/schedule.yaml --once   # для cron/Пла�
 `bitrix-auto daemon --once` выполняет ровно один прогон окна и выходит
 (cron: `5 18 * * *`, Планировщик Windows: ежедневное задание).
 
+В host/cron-режиме журнал SQLite по умолчанию создается по дефолту SDK —
+`.state/operations.sqlite3` относительно каталога запуска. Из корня репо
+это `<репо>/.state/` (каталог игнорируется git'ом). Если `bitrix-auto`
+запускается не из корня репо (например, cron с другим рабочим каталогом),
+задайте полный путь журнала в `BITRIX_STATE_PATH` — дефолт зависит от CWD,
+и журнал окажется не там, где вы ожидаете.
+
 ## Команды
 
 | Команда | Действие |
@@ -138,7 +145,7 @@ tasks:
 |---|---|
 | `BITRIX_WEBHOOK_URL` | Обязателен: `https://портал/rest/USER_ID/СЕКРЕТ/` |
 | `BITRIX_TIMEZONE` | `Europe/Moscow`; должна совпадать с `timezone` в YAML |
-| `BITRIX_STATE_PATH` | В Docker задан как `/app/state/operations.sqlite3` |
+| `BITRIX_STATE_PATH` | Путь к SQLite-журналу. В Docker — `/app/state/operations.sqlite3` (монтируется в `state/` репо); без Docker по умолчанию не задан, действует дефолт SDK — `.state/operations.sqlite3` относительно каталога запуска |
 | `BITRIX_TIMEOUT`, `BITRIX_READ_RETRIES` | Необязательны, см. документацию SDK |
 
 Разрешение записи включается только на время `apply`/`daemon` внутри
@@ -146,8 +153,11 @@ tasks:
 
 ## Журнал операций и особые случаи
 
-- Журнал SQLite (`state/operations.sqlite3`) — общий для всех прогонов;
-  не удаляйте его: SDK блокирует повторную отправку потерянных операций.
+- Журнал SQLite — общий для всех прогонов; не удаляйте его: SDK блокирует
+  повторную отправку потерянных операций. В Docker это
+  `state/operations.sqlite3` (монтируется из репо); в host/cron-режиме без
+  `BITRIX_STATE_PATH` — `.state/operations.sqlite3` относительно каталога
+  запуска (из корня репо — `<репо>/.state/`, игнорируется git'ом).
 - `time_entry` **добавляет** запись учета, портал суммирует записи за день.
   Поэтому по умолчанию действует защита `on_existing_entries: skip`: если за
   дату уже есть хоть одна запись учета (вручную, старым ботом, прошлым
