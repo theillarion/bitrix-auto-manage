@@ -21,6 +21,25 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-21
+
+### Добавлено
+
+- Тесты `runner` (прогон окна дат, обработка ошибок SDK, `show_day`), `scheduler`
+  (расчёт следующего запуска, коды выхода `--once`, пауза до `apply_time` и пауза
+  повтора) и CLI (`check`, `preview`, `apply`, `show`, `daemon`, запуск
+  `python -m bitrix_auto_manage`) — на фейках SDK, без сети и реального портала;
+  строковое покрытие всех модулей пакета доведено со 60% до 100%.
+
+### Безопасность
+
+- `.gitignore`: добавлен каталог `.state/` (дефолтный путь SQLite-журнала
+  host/cron-режима — `.state/operations.sqlite3` относительно каталога
+  запуска) — устранена публикация журнала с персональными данными при
+  `git add -A`; каталог также внесен в Never-список `AGENTS.md`. README
+  и `.env.example` теперь честно документируют хост-дефолт журнала
+  и рекомендуют задавать `BITRIX_STATE_PATH` при запуске не из корня репо.
+
 ## [0.1.0] - 2026-10-20
 
 Первый пре-релиз: автоматизация Time-менеджера Bitrix24 по YAML-расписанию.
@@ -51,5 +70,6 @@
   расписания.
 - Разработка: 25 offline-тестов (pytest), ruff, mypy strict.
 
-[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/theillarion/bitrix-auto-manage/releases/tag/v0.1.0
