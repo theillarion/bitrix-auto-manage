@@ -8,8 +8,8 @@
 [![release](https://img.shields.io/badge/release-v0.2.0-blue)](https://github.com/theillarion/bitrix-auto-manage/tree/v0.2.0)
 [![python](https://img.shields.io/badge/python-%E2%88%A53.11-007ec6)](pyproject.toml)
 [![License: MIT](https://img.shields.io/github/license/theillarion/bitrix-auto-manage)](LICENSE)
-[![code style: ruff](https://img.shields.io/badge/code%20style-ruff-00878F)](https://docs.astral.sh/ruff/)
-[![typing: mypy strict](https://img.shields.io/badge/typing-mypy%20strict-6C757D)](https://mypy-lang.org/)
+[![stars](https://img.shields.io/github/stars/theillarion/bitrix-auto-manage)](https://github.com/theillarion/bitrix-auto-manage)
+[![tests](https://github.com/theillarion/bitrix-auto-manage/actions/workflows/tests.yml/badge.svg)](https://github.com/theillarion/bitrix-auto-manage/actions/workflows/tests.yml)
 
 </div>
 

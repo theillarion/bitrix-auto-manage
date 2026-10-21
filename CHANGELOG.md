@@ -23,6 +23,11 @@
 
 ### Добавлено
 
+- CI: workflow GitHub Actions `.github/workflows/tests.yml` (push и
+  pull request; матрица Python 3.11–3.14) — клонирует публичный SDK
+  `sdk-bitrix-time-manager` в соседний каталог, ставит его и пакет
+  editable с dev-инструментами, затем `pytest` с покрытием, `ruff check`
+  и `mypy src`.
 - README: шапка для GitHub — строка бейджей (лицензия MIT, Python 3.11+,
   версия 0.2.0 со ссылкой на тег, звёзды) и теглайн; раздел «Возможности».
   Прежняя преамбула «О проекте» влита в теглайн и «Возможности», ссылка на SDK
@@ -33,6 +38,9 @@
 
 ### Изменено
 
+- README: бейджи шапки — добавлены `stars` и `tests` (badge.svg workflow
+  `tests.yml`), убраны `code style: ruff` и `typing: mypy strict`; итоговый
+  набор: release, python, license, stars, tests.
 - README: шапка приведена к стилю SDK-репозитория `sdk-bitrix-time-manager`:
   центрированный блок с теглайном и бейджи shields.io построчно (release v0.2.0
   по тегу, Python >=3.11, лицензия MIT, ruff, mypy strict) вместо прежней
