@@ -8,8 +8,9 @@
 появился рабочий день — по отметке СКУД или от роботов удалёнки.
 
 Проект — обертка над [sdk-bitrix-time-manager](https://github.com/theillarion/sdk-bitrix-time-manager):
-там REST-клиент, идемпотентность и журнал операций; здесь — YAML-конфигурация,
-планировщик и команды `bitrix-auto`.
+SDK даёт Python API и CLI `bitrix-time` для доступа к Тайм-менеджеру портала
+через входящий вебхук, с идемпотентностью и журналом операций; здесь —
+YAML-конфигурация, планировщик и команды `bitrix-auto`.
 
 ## Содержание
 
@@ -45,9 +46,16 @@
 cp .env.example .env                  # впишите свой BITRIX_WEBHOOK_URL
 cp config/schedule.example.yaml config/schedule.yaml
 $EDITOR config/schedule.yaml          # свои дни, время, договоры
+docker compose run --rm bitrix-auto check      # вебхук и схема портала (read-only)
+docker compose run --rm bitrix-auto preview --config config/schedule.yaml \
+    --date 2026-10-19 --days 1        # план записей на дату, без записи
 docker compose up -d --build
 docker compose logs -f                # смотреть журнал прогонов
 ```
+
+CLI-команды выполняются в контейнере через
+`docker compose run --rm bitrix-auto <команда>`; на хосте они доступны
+только после pip-установки (раздел 2.2).
 
 Демон при старте сразу применяет окно дат, затем повторяет каждый день в
 `schedule.apply_time` (локальное время из YAML). После сбоя повторяет попытку
