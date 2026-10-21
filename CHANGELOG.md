@@ -21,6 +21,12 @@
 
 ## [Unreleased]
 
+### Добавлено
+
+- Лицензия MIT: текст в `LICENSE` (тот же правообладатель, что у SDK
+  `bitrix-time-manager`), объявление в `pyproject.toml` (`license = "MIT"`,
+  `license-files`).
+
 ## [0.2.0] - 2026-10-21
 
 ### Добавлено
