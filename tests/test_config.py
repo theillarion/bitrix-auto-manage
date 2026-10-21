@@ -1,9 +1,11 @@
 """Tests for YAML config parsing, merging and planning."""
 
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
+from bitrix_time_manager.errors import ConfigurationError
 from bitrix_time_manager.models import RemoteWorkCreate, TimeEntryCreate, WorkdayCreate
 from pydantic import ValidationError
 
@@ -15,6 +17,7 @@ from bitrix_auto_manage.config import (
     load_config,
     parse_weekdays,
     plan_for_date,
+    today_in,
 )
 
 MINIMAL = """
@@ -48,6 +51,15 @@ class TestParseWeekdays:
         with pytest.raises(ValueError, match="Unknown weekday"):
             parse_weekdays(["funday"])
 
+    def test_non_string_value_rejected(self) -> None:
+        for value in (123, ["mon", 1]):
+            with pytest.raises(ValueError, match="string or a list of strings"):
+                parse_weekdays(value)
+
+    def test_unknown_range_boundary_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Unknown weekday names"):
+            parse_weekdays("mon-funday")
+
 
 class TestTaskSection:
     def test_workday_requires_interval(self) -> None:
@@ -78,6 +90,19 @@ class TestTaskSection:
         with pytest.raises(ValidationError):
             TaskSection.model_validate(
                 {"kind": "remote", "days": ["mon"], "start": "09:00", "end": "18:00", "tim": "x"}
+            )
+
+    def test_time_entry_zero_duration_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="duration must be greater than zero"):
+            TaskSection.model_validate(
+                {
+                    "kind": "time_entry",
+                    "days": ["mon"],
+                    "contract": {"entity_type": 1298, "id": 2},
+                    "description": "Работа",
+                    "hours": 0,
+                    "minutes": 0,
+                }
             )
 
 
@@ -126,14 +151,10 @@ tasks:
         assert [task.kind for task in config.tasks] == ["workday"]
 
     def test_empty_directory_rejected(self, tmp_path: Path) -> None:
-        from bitrix_time_manager.errors import ConfigurationError
-
         with pytest.raises(ConfigurationError, match="No settings YAML"):
             load_config([tmp_path])
 
     def test_invalid_yaml_rejected(self, tmp_path: Path) -> None:
-        from bitrix_time_manager.errors import ConfigurationError
-
         path = tmp_path / "bad.yaml"
         path.write_text("tasks: [unclosed", encoding="utf-8")
         with pytest.raises(ConfigurationError, match="Failed to parse YAML"):
@@ -153,6 +174,46 @@ schedule:
         config = load_config([base, patch])
         assert config.schedule.backfill_days == 3
         assert config.schedule.horizon_days == 2
+
+    def test_merge_recurses_into_nested_dicts(self, tmp_path: Path) -> None:
+        base = tmp_path / "base.yaml"
+        base.write_text("schedule:\n  horizon_days: 1\n", encoding="utf-8")
+        patch = tmp_path / "patch.yaml"
+        patch.write_text("schedule:\n  backfill_days: 3\n", encoding="utf-8")
+        config = load_config([base, patch])
+        assert config.schedule.horizon_days == 1
+        assert config.schedule.backfill_days == 3
+        assert config.schedule.apply_time == time(18, 5)
+
+    def test_missing_path_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ConfigurationError, match="Settings path not found"):
+            load_config([tmp_path / "missing.yaml"])
+
+    def test_empty_yaml_gives_defaults(self, tmp_path: Path) -> None:
+        path = tmp_path / "empty.yaml"
+        path.write_text("", encoding="utf-8")
+        assert load_config([path]) == AppConfig()
+
+    def test_non_mapping_yaml_rejected(self, tmp_path: Path) -> None:
+        path = tmp_path / "list.yaml"
+        path.write_text("- one\n- two\n", encoding="utf-8")
+        with pytest.raises(ConfigurationError, match="must contain a settings mapping"):
+            load_config([path])
+
+    def test_invalid_model_rejected(self, tmp_path: Path) -> None:
+        path = tmp_path / "invalid.yaml"
+        path.write_text(
+            "tasks:\n  - kind: workday\n    days: [funday]\n    start: '09:00'\n    end: '18:00'\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ConfigurationError, match="Unknown weekday"):
+            load_config([path])
+
+
+class TestTodayIn:
+    def test_returns_today_in_configured_timezone(self) -> None:
+        config = AppConfig.model_validate({"timezone": "Pacific/Kiritimati"})
+        assert today_in(config) == datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
 
 
 class TestPlanning:
