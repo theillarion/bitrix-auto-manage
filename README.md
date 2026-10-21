@@ -55,14 +55,31 @@ YAML-конфигурация, планировщик и команды `bitrix-
 
 ### 2.1. Docker
 
+**Подготовка окружения**
+
 ```bash
 cp .env.example .env                  # впишите свой BITRIX_WEBHOOK_URL
 cp config/schedule.example.yaml config/schedule.yaml
 $EDITOR config/schedule.yaml          # свои дни, время, договоры
+```
+
+**Предварительная проверка**
+
+```bash
 docker compose run --rm bitrix-auto check      # вебхук и схема портала (read-only)
 docker compose run --rm bitrix-auto preview --config config/schedule.yaml \
     --date 2026-10-19 --days 1        # план записей на дату, без записи
+```
+
+**Запуск**
+
+```bash
 docker compose up -d --build
+```
+
+**Проверка логов**
+
+```bash
 docker compose logs -f                # смотреть журнал прогонов
 ```
 
@@ -80,14 +97,35 @@ SDK подключается в контейнер монтированием с
 
 ### 2.2. Локальный запуск без Docker
 
+**Подготовка окружения**
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -e '../sdk-bitrix-time-manager' -e .
 cp .env.example .env
+```
+
+**Предварительная проверка**
+
+```bash
 bitrix-auto preview --config config/schedule.example.yaml --date 2026-10-19 --days 1
+```
+
+**Запуск**
+
+```bash
 bitrix-auto apply   --config config/schedule.yaml
 bitrix-auto daemon  --config config/schedule.yaml --once   # для cron/Планировщика Windows
+```
+
+**Проверка логов**
+
+Вывод команд — в stdout; каждая операция попадает в SQLite-журнал (раздел 6).
+Посмотреть день за дату (read-only):
+
+```bash
+bitrix-auto show --date 2026-10-19   # день, удалёнка и учет времени за дату
 ```
 
 Без Docker демона можно заменить системным планировщиком:
