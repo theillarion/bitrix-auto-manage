@@ -1,6 +1,19 @@
+<div align="center">
+
 # bitrix-auto-manage
 
-[![license: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE) [![python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)] [![version: 0.2.0](https://img.shields.io/badge/version-0.2.0-blue)](https://github.com/theillarion/bitrix-auto-manage/tree/v0.2.0) [![stars](https://img.shields.io/github/stars/theillarion/bitrix-auto-manage)](https://github.com/theillarion/bitrix-auto-manage)
+Автозаполнение Тайм-менеджера Bitrix24 из YAML-расписания: демон в Docker
+или cron заранее выставляет удалёнку и добавляет учет времени.
+
+[![release](https://img.shields.io/badge/release-v0.2.0-blue)](https://github.com/theillarion/bitrix-auto-manage/tree/v0.2.0)
+[![python](https://img.shields.io/badge/python-%E2%88%A53.11-007ec6)](pyproject.toml)
+[![License: MIT](https://img.shields.io/github/license/theillarion/bitrix-auto-manage)](LICENSE)
+[![code style: ruff](https://img.shields.io/badge/code%20style-ruff-00878F)](https://docs.astral.sh/ruff/)
+[![typing: mypy strict](https://img.shields.io/badge/typing-mypy%20strict-6C757D)](https://mypy-lang.org/)
+
+</div>
+
+---
 
 Автозаполнение Тайм-менеджера Bitrix24 — расписание удалёнки и учёта часов
 в одном YAML, применяется демоном в Docker или из cron. Удалёнка выставляется

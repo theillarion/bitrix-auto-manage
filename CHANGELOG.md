@@ -33,6 +33,11 @@
 
 ### Изменено
 
+- README: шапка приведена к стилю SDK-репозитория `sdk-bitrix-time-manager`:
+  центрированный блок с теглайном и бейджи shields.io построчно (release v0.2.0
+  по тегу, Python >=3.11, лицензия MIT, ruff, mypy strict) вместо прежней
+  однострочной строки бейджей; бейджи stars убраны (в SDK их нет), tests
+  не добавлен (в репозитории нет workflow GitHub Actions).
 - README: уточнено описание SDK в шапке — SDK даёт Python API и CLI
   `bitrix-time`, а не «REST-клиент»; в быстрый старт Docker добавлены шаги
   проверки перед запуском демона (`check` и `preview` через
