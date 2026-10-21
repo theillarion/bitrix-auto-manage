@@ -104,11 +104,14 @@ python3 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -e '../sdk-bitrix-time-manager' -e .
 cp .env.example .env
+cp config/schedule.example.yaml config/schedule.yaml
+$EDITOR config/schedule.yaml          # свои дни, время, договоры
 ```
 
 **Предварительная проверка**
 
 ```bash
+bitrix-auto check                     # вебхук и схема портала (read-only)
 bitrix-auto preview --config config/schedule.example.yaml --date 2026-10-19 --days 1
 ```
 
