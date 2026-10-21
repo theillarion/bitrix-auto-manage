@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from bitrix_time_manager.errors import ConfigurationError
-from bitrix_time_manager.models import RemoteWorkCreate, TimeEntryCreate, WorkdayCreate
+from bitrix_time_manager.models import RemoteWorkCreate, TimeEntryCreate
 from pydantic import ValidationError
 
 from bitrix_auto_manage.config import (
@@ -23,7 +23,7 @@ from bitrix_auto_manage.config import (
 MINIMAL = """
 timezone: Europe/Moscow
 tasks:
-  - kind: workday
+  - kind: remote
     days: [mon-fri]
     start: "09:00"
     end: "18:00"
@@ -62,9 +62,13 @@ class TestParseWeekdays:
 
 
 class TestTaskSection:
-    def test_workday_requires_interval(self) -> None:
+    def test_workday_kind_is_rejected_fail_closed(self) -> None:
+        with pytest.raises(ValidationError, match="literal_error"):
+            TaskSection.model_validate({"kind": "workday", "days": ["mon"], "start": "09:00", "end": "18:00"})
+
+    def test_remote_requires_interval(self) -> None:
         with pytest.raises(ValidationError, match="requires start and end"):
-            TaskSection.model_validate({"kind": "workday", "days": ["mon"], "start": "09:00"})
+            TaskSection.model_validate({"kind": "remote", "days": ["mon"], "start": "09:00"})
 
     def test_end_after_start(self) -> None:
         with pytest.raises(ValidationError, match="later than start"):
@@ -133,7 +137,7 @@ tasks:
         )
         config = load_config([first, second])
         assert config.schedule.apply_time == time(17, 0)
-        assert [task.kind for task in config.tasks] == ["workday", "remote"]
+        assert [task.kind for task in config.tasks] == ["remote", "remote"]
 
     def test_directory_is_scanned_in_order(self, tmp_path: Path) -> None:
         (tmp_path / "10-base.yaml").write_text(MINIMAL, encoding="utf-8")
@@ -148,7 +152,7 @@ tasks:
             encoding="utf-8",
         )
         config = load_config([tmp_path])
-        assert [task.kind for task in config.tasks] == ["workday"]
+        assert [task.kind for task in config.tasks] == ["remote"]
 
     def test_empty_directory_rejected(self, tmp_path: Path) -> None:
         with pytest.raises(ConfigurationError, match="No settings YAML"):
@@ -203,10 +207,19 @@ schedule:
     def test_invalid_model_rejected(self, tmp_path: Path) -> None:
         path = tmp_path / "invalid.yaml"
         path.write_text(
-            "tasks:\n  - kind: workday\n    days: [funday]\n    start: '09:00'\n    end: '18:00'\n",
+            "tasks:\n  - kind: remote\n    days: [funday]\n    start: '09:00'\n    end: '18:00'\n",
             encoding="utf-8",
         )
         with pytest.raises(ConfigurationError, match="Unknown weekday"):
+            load_config([path])
+
+    def test_workday_kind_rejected_as_configuration_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "legacy-workday.yaml"
+        path.write_text(
+            "tasks:\n  - kind: workday\n    days: [mon]\n    start: '09:00'\n    end: '18:00'\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(ConfigurationError, match="literal_error"):
             load_config([path])
 
 
@@ -222,7 +235,6 @@ class TestPlanning:
         return AppConfig.model_validate(
             {
                 "tasks": [
-                    {"kind": "workday", "days": ["mon-fri"], "start": "09:00", "end": "18:00"},
                     {
                         "kind": "remote",
                         "days": ["fri"],
@@ -246,7 +258,7 @@ class TestPlanning:
         friday = date(2026, 10, 16)
         assert date(2026, 10, 16).weekday() == 4
         kinds = [type(spec).__name__ for _, spec in plan_for_date(config, friday)]
-        assert kinds == ["WorkdayCreate", "RemoteWorkCreate", "TimeEntryCreate"]
+        assert kinds == ["RemoteWorkCreate", "TimeEntryCreate"]
 
     def test_weekend_without_tasks(self, config: AppConfig) -> None:
         saturday = date(2026, 10, 17)
@@ -259,7 +271,7 @@ class TestPlanning:
             for _, spec in plan_for_date(config, day):
                 if isinstance(spec, RemoteWorkCreate):
                     assert weekday == 4
-                elif isinstance(spec, (TimeEntryCreate, WorkdayCreate)):
+                elif isinstance(spec, TimeEntryCreate):
                     assert weekday <= 4
                 else:
                     pytest.fail(f"Незапланированный вид операции: {spec}")

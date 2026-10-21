@@ -11,7 +11,7 @@
 ## Компоненты и ответственность
 
 - `config.py` — контракты YAML: строгие модели `extra="forbid"` (config.py:68,79,88), типы договоров `Literal[1048, 1052, 1298]` (config.py:81); слияние нескольких файлов — скаляры перезаписываются, `tasks` дополняется (config.py:136), `*.example.*` пропускаются (config.py:154).
-- `config.py` — окно прогона (config.py:191), план дня в фиксированном порядке `workday → remote → time_entry` (config.py:30,198), идемпотентный ключ `auto:<дата>:<хэш>` (config.py:227).
+- `config.py` — окно прогона (config.py:191), план дня в фиксированном порядке `remote → time_entry` (config.py:30,198), идемпотентный ключ `auto:<дата>:<хэш>` (config.py:222).
 - `runner.py` — применение плана: разрешение записи включается только здесь (runner.py:48); изоляция отказов — `uncertain` не прерывает окно (runner.py:57), отсутствующий день → skip (runner.py:67); `on_existing_entries: skip` сверяет существующие записи (runner.py:82-83); `show` — три параллельных чтения (runner.py:118).
 - `scheduler.py` — демон: немедленный прогон, далее ежедневно в `apply_time` (scheduler.py:21-22,39), повтор через `retry_minutes` (scheduler.py:60).
 - `cli.py` — команды check/preview/apply/show/daemon (cli.py:45-64).

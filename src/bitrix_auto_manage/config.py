@@ -7,7 +7,7 @@ from typing import Any, Literal, Self
 
 import yaml
 from bitrix_time_manager.errors import ConfigurationError
-from bitrix_time_manager.models import ContractRef, RemoteWorkCreate, TimeEntryCreate, WorkdayCreate
+from bitrix_time_manager.models import ContractRef, RemoteWorkCreate, TimeEntryCreate
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
 
 WEEKDAY_NAMES = {
@@ -27,7 +27,7 @@ WEEKDAY_NAMES = {
     "вс": 6,
 }
 
-KIND_ORDER = {"workday": 0, "remote": 1, "time_entry": 2}
+KIND_ORDER = {"remote": 0, "time_entry": 1}
 
 
 def parse_weekdays(value: Any) -> frozenset[int]:
@@ -87,7 +87,7 @@ class TaskSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["workday", "remote", "time_entry"]
+    kind: Literal["remote", "time_entry"]
     days: frozenset[int]
     start: time | None = None
     end: time | None = None
@@ -110,7 +110,7 @@ class TaskSection(BaseModel):
 
     @model_validator(mode="after")
     def check_kind_fields(self) -> Self:
-        if self.kind in {"workday", "remote"}:
+        if self.kind == "remote":
             if self.start is None or self.end is None:
                 raise ValueError(f"kind: {self.kind} requires start and end, e.g. '09:00' and '18:00'.")
             if self.end <= self.start:
@@ -195,22 +195,17 @@ def date_range(config: AppConfig, today: date) -> list[date]:
     return [start + timedelta(days=offset) for offset in range((stop - start).days + 1)]
 
 
-def plan_for_date(
-    config: AppConfig, day: date
-) -> list[tuple[TaskSection, WorkdayCreate | RemoteWorkCreate | TimeEntryCreate]]:
-    """Specs scheduled for this calendar day, ordered workday, remote, time entry."""
-    plans: list[tuple[TaskSection, WorkdayCreate | RemoteWorkCreate | TimeEntryCreate]] = []
+def plan_for_date(config: AppConfig, day: date) -> list[tuple[TaskSection, RemoteWorkCreate | TimeEntryCreate]]:
+    """Specs scheduled for this calendar day, ordered remote, time entry."""
+    plans: list[tuple[TaskSection, RemoteWorkCreate | TimeEntryCreate]] = []
     for task in sorted(config.tasks, key=lambda item: KIND_ORDER[item.kind]):
         if day.weekday() not in task.days:
             continue
-        if task.kind == "workday":
+        if task.kind == "remote":
             assert task.start is not None and task.end is not None
-            spec: WorkdayCreate | RemoteWorkCreate | TimeEntryCreate = WorkdayCreate(
+            spec: RemoteWorkCreate | TimeEntryCreate = RemoteWorkCreate(
                 day=day, start=task.start, end=task.end, comment=task.comment
             )
-        elif task.kind == "remote":
-            assert task.start is not None and task.end is not None
-            spec = RemoteWorkCreate(day=day, start=task.start, end=task.end, comment=task.comment)
         else:
             assert task.contract is not None and task.description is not None
             spec = TimeEntryCreate(
@@ -224,7 +219,7 @@ def plan_for_date(
     return plans
 
 
-def idempotency_key(spec: WorkdayCreate | RemoteWorkCreate | TimeEntryCreate) -> str:
+def idempotency_key(spec: RemoteWorkCreate | TimeEntryCreate) -> str:
     """Stable per-date, per-parameters key so reruns never duplicate records."""
     import hashlib
     import json

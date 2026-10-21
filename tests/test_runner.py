@@ -8,12 +8,7 @@ from typing import Any
 import pytest
 from bitrix_time_manager.config import Settings
 from bitrix_time_manager.errors import NotFoundError, TimeManagerError, UncertainWriteError
-from bitrix_time_manager.models import (
-    OperationResult,
-    RemoteWorkCreate,
-    TimeEntryCreate,
-    WorkdayCreate,
-)
+from bitrix_time_manager.models import OperationResult, RemoteWorkCreate, TimeEntryCreate
 from pydantic import SecretStr
 
 from bitrix_auto_manage import runner
@@ -23,7 +18,7 @@ from bitrix_auto_manage.runner import RunSummary, run_window, show_day
 WEBHOOK = "https://example.com/rest/1/testsecret/"
 MONDAY = date(2026, 10, 12)
 FRIDAY = date(2026, 10, 16)
-RESULT_KIND = {"workday": "workday", "remote": "remote_work", "time_entry": "time_entry"}
+RESULT_KIND = {"remote": "remote_work", "time_entry": "time_entry"}
 
 
 def make_settings() -> Settings:
@@ -35,7 +30,6 @@ def make_config() -> AppConfig:
         {
             "timezone": "Europe/Moscow",
             "tasks": [
-                {"kind": "workday", "days": ["mon-fri"], "start": "09:00", "end": "18:00"},
                 {"kind": "remote", "days": ["fri"], "start": "10:00", "end": "18:00"},
                 {
                     "kind": "time_entry",
@@ -124,9 +118,6 @@ def install_fake(monkeypatch: pytest.MonkeyPatch, recorder: Recorder) -> Recorde
         def __init__(self, client: FakeClient) -> None:
             self.client = client
 
-        async def create_workday(self, spec: Any, *, dry_run: bool, idempotency_key: str) -> OperationResult:
-            return await recorder.create("workday", spec, dry_run=dry_run, idempotency_key=idempotency_key)
-
         async def create_remote_work(self, spec: Any, *, dry_run: bool, idempotency_key: str) -> OperationResult:
             return await recorder.create("remote", spec, dry_run=dry_run, idempotency_key=idempotency_key)
 
@@ -169,19 +160,23 @@ class TestRunWindow:
         recorder = install_fake(monkeypatch, Recorder(lambda kind, spec: make_result(kind, "preview")))
         summary = await run_window(make_config(), make_settings(), [MONDAY], dry_run=True)
         assert recorder.clients[0].settings.allow_writes is False
-        assert summary.previewed == 2
+        assert summary.previewed == 1
         assert all(call.dry_run for call in recorder.calls)
 
     async def test_statuses_are_counted_per_kind(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        statuses = {"workday": "created", "remote": "existing", "time_entry": "preview"}
-        install_fake(monkeypatch, Recorder(lambda kind, spec: make_result(kind, statuses[kind])))
-        summary = await run_window(make_config(), make_settings(), [FRIDAY], dry_run=True)
+        def handle(kind: str, spec: Any) -> OperationResult:
+            if kind == "remote":
+                return make_result(kind, "created")
+            return make_result(kind, "existing") if spec.day == FRIDAY else make_result(kind, "preview")
+
+        install_fake(monkeypatch, Recorder(handle))
+        summary = await run_window(make_config(), make_settings(), [FRIDAY, MONDAY], dry_run=True)
         assert summary.describe() == "created=1 existing=1 previewed=1 skipped=0 uncertain=0 failed=0"
 
     async def test_recovered_status_counts_as_previewed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         install_fake(monkeypatch, Recorder(lambda kind, spec: make_result(kind, "recovered")))
         summary = await run_window(make_config(), make_settings(), [FRIDAY], dry_run=True)
-        assert summary.previewed == 3
+        assert summary.previewed == 2
 
     async def test_warnings_and_item_details_are_logged(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -198,27 +193,27 @@ class TestRunWindow:
 
     async def test_uncertain_write_continues_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def handle(kind: str, spec: Any) -> OperationResult:
-            if kind == "workday":
+            if kind == "remote":
                 raise UncertainWriteError("op-uncertain")
             return make_result(kind, "created")
 
         install_fake(monkeypatch, Recorder(handle))
-        summary = await run_window(make_config(), make_settings(), [MONDAY], dry_run=False)
+        summary = await run_window(make_config(), make_settings(), [FRIDAY], dry_run=False)
         assert summary.uncertain == 1
         assert summary.created == 1
-        assert summary.errors == ["2026-10-12 WorkdayCreate: uncertain"]
+        assert summary.errors == ["2026-10-16 RemoteWorkCreate: uncertain"]
 
     async def test_not_found_is_skipped_without_error_entry(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         def handle(kind: str, spec: Any) -> OperationResult:
-            if kind == "workday":
+            if kind == "remote":
                 raise NotFoundError("Workday card not found")
             return make_result(kind, "created")
 
         install_fake(monkeypatch, Recorder(handle))
         with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"):
-            summary = await run_window(make_config(), make_settings(), [MONDAY], dry_run=False)
+            summary = await run_window(make_config(), make_settings(), [FRIDAY], dry_run=False)
         assert summary.skipped == 1
         assert summary.created == 1
         assert summary.errors == []
@@ -226,15 +221,15 @@ class TestRunWindow:
 
     async def test_other_manager_error_is_skipped_and_recorded(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def handle(kind: str, spec: Any) -> OperationResult:
-            if kind == "workday":
+            if kind == "remote":
                 raise TimeManagerError("portal rejected the request")
             return make_result(kind, "created")
 
         install_fake(monkeypatch, Recorder(handle))
-        summary = await run_window(make_config(), make_settings(), [MONDAY], dry_run=False)
+        summary = await run_window(make_config(), make_settings(), [FRIDAY], dry_run=False)
         assert summary.skipped == 1
         assert summary.created == 1
-        assert summary.errors == ["2026-10-12 WorkdayCreate: portal rejected the request"]
+        assert summary.errors == ["2026-10-16 RemoteWorkCreate: portal rejected the request"]
 
     async def test_skip_policy_with_existing_entries_skips_create(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -242,23 +237,23 @@ class TestRunWindow:
         recorder = install_fake(monkeypatch, Recorder(entries=[{"ID": 1}]))
         with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"):
             summary = await run_window(make_config(), make_settings(), [MONDAY], dry_run=False)
-        assert [call.kind for call in recorder.calls] == ["workday"]
+        assert [call.kind for call in recorder.calls] == []
         assert recorder.listed_days == [MONDAY]
-        assert summary.created == 1
+        assert summary.created == 0
         assert summary.skipped == 1
         assert "already has 1 time entries" in caplog.text
 
     async def test_skip_policy_without_existing_entries_creates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         recorder = install_fake(monkeypatch, Recorder(entries=[]))
         summary = await run_window(make_config(), make_settings(), [MONDAY], dry_run=False)
-        assert [call.kind for call in recorder.calls] == ["workday", "time_entry"]
-        assert summary.created == 2
+        assert [call.kind for call in recorder.calls] == ["time_entry"]
+        assert summary.created == 1
 
     async def test_dispatch_passes_spec_dry_run_and_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
         recorder = install_fake(monkeypatch, Recorder())
         await run_window(make_config(), make_settings(), [FRIDAY], dry_run=True)
-        assert [call.kind for call in recorder.calls] == ["workday", "remote", "time_entry"]
-        assert [type(call.spec) for call in recorder.calls] == [WorkdayCreate, RemoteWorkCreate, TimeEntryCreate]
+        assert [call.kind for call in recorder.calls] == ["remote", "time_entry"]
+        assert [type(call.spec) for call in recorder.calls] == [RemoteWorkCreate, TimeEntryCreate]
         assert all(call.spec.day == FRIDAY for call in recorder.calls)
         assert all(call.dry_run for call in recorder.calls)
         assert all(call.idempotency_key.startswith("auto:2026-10-16:") for call in recorder.calls)

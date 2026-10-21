@@ -9,14 +9,14 @@ from typing import Any, TypeAlias
 from bitrix_time_manager.client import BitrixClient
 from bitrix_time_manager.config import Settings
 from bitrix_time_manager.errors import NotFoundError, TimeManagerError, UncertainWriteError
-from bitrix_time_manager.models import OperationResult, RemoteWorkCreate, TimeEntryCreate, WorkdayCreate
+from bitrix_time_manager.models import OperationResult, RemoteWorkCreate, TimeEntryCreate
 from bitrix_time_manager.service import TimeManager
 
 from bitrix_auto_manage.config import AppConfig, TaskSection, idempotency_key, plan_for_date
 
 logger = logging.getLogger("bitrix_auto_manage")
 
-Spec: TypeAlias = WorkdayCreate | RemoteWorkCreate | TimeEntryCreate
+Spec: TypeAlias = RemoteWorkCreate | TimeEntryCreate
 
 
 @dataclass
@@ -88,8 +88,6 @@ async def _apply_spec(manager: TimeManager, task: TaskSection, spec: Spec, *, dr
                 len(existing),
             )
             return None
-    if isinstance(spec, WorkdayCreate):
-        return await manager.create_workday(spec, dry_run=dry_run, idempotency_key=key)
     if isinstance(spec, RemoteWorkCreate):
         return await manager.create_remote_work(spec, dry_run=dry_run, idempotency_key=key)
     return await manager.create_time_entry(spec, dry_run=dry_run, idempotency_key=key)

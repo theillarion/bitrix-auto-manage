@@ -25,7 +25,7 @@ timezone: Europe/Moscow
 schedule:
   apply_time: "18:05"
 tasks:
-  - kind: workday
+  - kind: remote
     days: [mon-fri]
     start: "09:00"
     end: "18:00"
