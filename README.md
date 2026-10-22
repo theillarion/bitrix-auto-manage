@@ -68,7 +68,7 @@ $EDITOR config/schedule.yaml          # свои дни, время, догов�
 ```bash
 docker compose run --rm bitrix-auto check      # вебхук и схема портала (read-only)
 docker compose run --rm bitrix-auto preview --config config/schedule.yaml \
-    --date 2026-10-19 --days 1        # план записей на дату, без записи
+    --days 3        # план записей на ближайшие три дня (сегодня..послезавтра), без записи
 ```
 
 **Запуск**
@@ -124,7 +124,7 @@ $EDITOR config/schedule.yaml          # свои дни, время, догов�
 
 ```bash
 bitrix-auto check                     # вебхук и схема портала (read-only)
-bitrix-auto preview --config config/schedule.example.yaml --date 2026-10-19 --days 1
+bitrix-auto preview --config config/schedule.example.yaml --days 3
 ```
 
 **Запуск**
