@@ -6,8 +6,9 @@
 
 Вызвать CLI можно тремя способами:
 
-- утилитой `bitrix-auto` из активированного venv (ставится командой
-  `pip install -e '../sdk-bitrix-time-manager' -e .`, см. [README](../README.md));
+- утилитой `bitrix-auto` из активированного venv: склонируйте SDK рядом
+  с репо (см. [README](../README.md)) и поставьте оба пакета командой
+  `pip install -e '../sdk-bitrix-time-manager' -e .`;
 - эквивалентно — `python -m bitrix_auto_manage`;
 - в Docker: точка входа контейнера уже `python -m bitrix_auto_manage`,
   поэтому любая команда даётся как `docker compose run --rm bitrix-auto

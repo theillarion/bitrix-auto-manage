@@ -58,6 +58,8 @@ YAML-конфигурация, планировщик и команды `bitrix-
 **Подготовка окружения**
 
 ```bash
+git clone https://github.com/theillarion/sdk-bitrix-time-manager \
+    ../sdk-bitrix-time-manager        # SDK — соседний каталог, монтируется в контейнер
 cp .env.example .env                  # впишите свой BITRIX_WEBHOOK_URL
 cp config/schedule.example.yaml config/schedule.yaml
 $EDITOR config/schedule.yaml          # свои дни, время, договоры
@@ -105,11 +107,17 @@ SDK подключается в контейнер монтированием с
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate            # Windows: .venv\Scripts\activate
+git clone https://github.com/theillarion/sdk-bitrix-time-manager \
+    ../sdk-bitrix-time-manager
 pip install -e '../sdk-bitrix-time-manager' -e .
 cp .env.example .env
 cp config/schedule.example.yaml config/schedule.yaml
 $EDITOR config/schedule.yaml          # свои дни, время, договоры
 ```
+
+Каталог SDK может быть любым: по умолчанию команды ожидают соседний
+`../sdk-bitrix-time-manager`; при другом расположении укажите свой путь
+в установке — `pip install -e '<путь-к-SDK>' -e .`.
 
 **Предварительная проверка**
 
@@ -223,6 +231,7 @@ tasks:
 | `BITRIX_WEBHOOK_URL` | Обязателен: `https://портал/rest/USER_ID/СЕКРЕТ/` |
 | `BITRIX_TIMEZONE` | `Europe/Moscow`; должна совпадать с `timezone` в YAML |
 | `BITRIX_STATE_PATH` | Путь к SQLite-журналу. В Docker — `/app/state/operations.sqlite3` (монтируется в `state/` репо); без Docker по умолчанию не задан, действует дефолт SDK — `.state/operations.sqlite3` относительно каталога запуска |
+| `BITRIX_SDK_PATH` | Только Docker: путь к каталогу SDK, который монтируется в контейнер (`/opt/sdk`); по умолчанию — соседний `../sdk-bitrix-time-manager`. На локальный запуск не влияет |
 | `BITRIX_TIMEOUT`, `BITRIX_READ_RETRIES` | Необязательны, см. документацию SDK |
 
 Разрешение записи включается только на время `apply`/`daemon` внутри
