@@ -19,7 +19,7 @@
 - С 1.0: минорная — обратно совместимые функции, патч — исправления,
   мажорная — несовместимые изменения.
 
-## [Unreleased]
+## [0.3.0] - 2026-10-22
 
 ### Удалено
 
@@ -31,29 +31,40 @@
 
 ### Добавлено
 
+- YAML: ключ `schedule.skip_dates` — список дат `YYYY-MM-DD`, полностью
+  исключаемых из планирования: за них не создаётся ни удалёнка, ни записи
+  учета (действует в `daemon`, `apply` и `preview`, включая явные окна
+  `--date`/`--days`; в журнале прогона такие даты отмечаются строкой
+  `<дата>: skipped by skip_dates`). При слиянии нескольких файлов список
+  позднего файла заменяет ранний.
+- Демон перечитывает YAML-конфиг перед каждым прогоном (включая первый):
+  правки подхватываются без рестарта контейнера. Ошибка загрузки при
+  перечитывании — неудачный прогон: лог причины и повтор через
+  `retry_minutes`, ранее загруженный конфиг повторно не применяется; битый
+  конфиг на первом старте завершает демон с кодом 1. Нечитаемый файл YAML
+  теперь даёт ошибку конфигурации, а не traceback.
 - CI: workflow GitHub Actions `.github/workflows/tests.yml` (push и
   pull request; матрица Python 3.11–3.14) — клонирует публичный SDK
   `sdk-bitrix-time-manager` в соседний каталог, ставит его и пакет
   editable с dev-инструментами, затем `pytest` с покрытием, `ruff check`
   и `mypy src`.
-- README: шапка для GitHub — строка бейджей (лицензия MIT, Python 3.11+,
-  версия 0.2.0 со ссылкой на тег, звёзды) и теглайн; раздел «Возможности».
-  Прежняя преамбула «О проекте» влита в теглайн и «Возможности», ссылка на SDK
-  заменена на публичный адрес репозитория.
+- README: шапка для GitHub в стиле SDK-репозитория — центрированный блок
+  с теглайном и построчными бейджами shields.io; итоговый набор бейджей:
+  release (версия релиза со ссылкой на тег), Python >=3.11, лицензия MIT,
+  stars и tests (badge.svg workflow `tests.yml`); бейджей `code style: ruff`
+  и `typing: mypy strict` в итоговом наборе нет. Прежняя преамбула «О проекте»
+  влита в теглайн и раздел «Возможности», ссылка на SDK заменена на публичный
+  адрес репозитория.
 - Лицензия MIT: текст в `LICENSE` (тот же правообладатель, что у SDK
   `bitrix-time-manager`), объявление в `pyproject.toml` (`license = "MIT"`,
   `license-files`).
+- Документация: `docs/commands.md` — полный справочник CLI `bitrix-auto`
+  (все команды и флаги с дефолтами, семантика окна `--date`/`--days` тремя
+  комбинациями, коды выхода, примеры локально и в Docker); ссылки на него
+  из README и docs/setup.md.
 
 ### Изменено
 
-- README: бейджи шапки — добавлены `stars` и `tests` (badge.svg workflow
-  `tests.yml`), убраны `code style: ruff` и `typing: mypy strict`; итоговый
-  набор: release, python, license, stars, tests.
-- README: шапка приведена к стилю SDK-репозитория `sdk-bitrix-time-manager`:
-  центрированный блок с теглайном и бейджи shields.io построчно (release v0.2.0
-  по тегу, Python >=3.11, лицензия MIT, ruff, mypy strict) вместо прежней
-  однострочной строки бейджей; бейджи stars убраны (в SDK их нет), tests
-  не добавлен (в репозитории нет workflow GitHub Actions).
 - README: уточнено описание SDK в шапке — SDK даёт Python API и CLI
   `bitrix-time`, а не «REST-клиент»; в быстрый старт Docker добавлены шаги
   проверки перед запуском демона (`check` и `preview` через
@@ -117,6 +128,7 @@
   расписания.
 - Разработка: 25 offline-тестов (pytest), ruff, mypy strict.
 
-[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/theillarion/bitrix-auto-manage/releases/tag/v0.1.0
