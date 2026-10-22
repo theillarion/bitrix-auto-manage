@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to create the release for (vX.Y.Z)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v4
+        with:
+          # push: github.ref = refs/tags/vX.Y.Z; dispatch: введённый тег.
+          # Checkout по несуществующему тегу падает — защита от опечатки
+          # (gh не получит шанс создать тег на случайном HEAD), а CHANGELOG
+          # берётся из коммита тега, а не из HEAD.
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Resolve tag name
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="$REF_NAME"
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          TAG_NAME: ${{ steps.tag.outputs.name }}
+        run: |
+          python3 <<'PYEOF'
+          import os, re, sys
+
+          tag = os.environ["TAG_NAME"]
+          version = tag[1:] if tag.startswith("v") else tag
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+
+          header = re.search(rf"^## \[{re.escape(version)}\]", text, re.M)
+          if header is None:
+              sys.exit(
+                  f"error: no CHANGELOG.md section '## [{version}]' for tag '{tag}'; "
+                  "a release without changelog notes is not created"
+              )
+
+          # Drop the rest of the header line: keep-a-changelog puts the
+          # " - YYYY-MM-DD" date there; notes start from the next line.
+          line_end = text.find("\n", header.end())
+          rest = text[line_end + 1:] if line_end != -1 else ""
+          for stop in (r"^## \[", r"^\[[^\]]+\]: \S"):  # следующая секция / link-definitions
+              m = re.search(stop, rest, re.M)
+              if m:
+                  rest = rest[: m.start()]
+
+          notes = rest.strip()
+          if not notes:
+              print(f"warning: section '## [{version}]' is empty — the release will have empty notes")
+          open("release_notes.md", "w", encoding="utf-8").write(notes + "\n")
+          print(f"Extracted notes for {version} ({len(notes)} chars)")
+          PYEOF
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.tag.outputs.name }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          if gh release view "$TAG_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::Release $TAG_NAME already exists — skipping creation"
+            exit 0
+          fi
+          gh release create "$TAG_NAME" \
+            --title "Version $VERSION" \
+            --notes-file release_notes.md \
+            -R "$GITHUB_REPOSITORY"
