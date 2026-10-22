@@ -67,11 +67,12 @@ async def run_daemon(paths: list[Path], settings: Settings, *, once: bool = Fals
         zone = ZoneInfo(config.timezone)
         now = datetime.now(zone)
         if summary.ok:
-            pause = _next_run(config, now) - now
+            next_run = _next_run(config, now)
+            pause = next_run - now
+            logger.info("Next run at %s (in %s).", next_run.strftime("%H:%M"), _format_pause(pause))
         else:
             pause = timedelta(minutes=config.schedule.retry_minutes)
             logger.info("Retrying in %d minutes.", config.schedule.retry_minutes)
-        logger.info("Next run in %s.", _format_pause(pause))
         await asyncio.sleep(pause.total_seconds())
 
 

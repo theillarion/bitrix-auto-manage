@@ -99,6 +99,10 @@ class TestFormatPause:
     def test_formats_hours_and_minutes(self) -> None:
         assert _format_pause(timedelta(hours=2, minutes=5)) == "02:05"
 
+    def test_seconds_are_dropped_without_rounding(self) -> None:
+        assert _format_pause(timedelta(hours=18, minutes=34, seconds=7)) == "18:34"
+        assert _format_pause(timedelta(hours=18, minutes=34, seconds=59)) == "18:34"
+
     def test_zero_and_negative_pause_are_clamped(self) -> None:
         assert _format_pause(timedelta(0)) == "00:00"
         assert _format_pause(timedelta(seconds=-30)) == "00:00"
@@ -260,6 +264,18 @@ class TestRunDaemon:
             await run_daemon(self.paths, make_settings())
         assert spy.seconds == [6 * 3600 + 5 * 60]
 
+    async def test_success_logs_next_run_time_and_pause(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([make_config()]))
+        monkeypatch.setattr(scheduler, "run_window", _run_window_returning(RunSummary(created=1)))
+        monkeypatch.setattr(scheduler, "datetime", FakeDateTime)
+        spy = SleepSpy()
+        monkeypatch.setattr(scheduler, "asyncio", spy)
+        with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"), pytest.raises(asyncio.CancelledError):
+            await run_daemon(self.paths, make_settings())
+        assert "Next run at 18:05 (in 06:05)." in caplog.text
+
     async def test_loop_retries_after_configured_minutes(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -275,3 +291,4 @@ class TestRunDaemon:
             await run_daemon(self.paths, make_settings())
         assert spy.seconds == [20 * 60]
         assert "Retrying in 20 minutes." in caplog.text
+        assert "Next run" not in caplog.text
