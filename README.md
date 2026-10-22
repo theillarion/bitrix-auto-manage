@@ -58,8 +58,6 @@ YAML-конфигурация, планировщик и команды `bitrix-
 **Подготовка окружения**
 
 ```bash
-git clone https://github.com/theillarion/sdk-bitrix-time-manager \
-    ../sdk-bitrix-time-manager        # SDK — соседний каталог, монтируется в контейнер
 cp .env.example .env                  # впишите свой BITRIX_WEBHOOK_URL
 cp config/schedule.example.yaml config/schedule.yaml
 $EDITOR config/schedule.yaml          # свои дни, время, договоры
@@ -96,9 +94,12 @@ CLI-команды выполняются в контейнере через
 неудачным прогоном — повтор через `retry_minutes`; после сбоя повторяет
 попытку через тот же интервал.
 
-SDK подключается в контейнер монтированием соседнего каталога
-`../sdk-bitrix-time-manager` в `/opt/sdk`. Если он лежит в другом месте,
-задайте переменную `BITRIX_SDK_PATH` в `.env`.
+SDK вшит в образ: при сборке клонируется по тегу `BITRIX_SDK_REF` (по умолчанию
+`v0.2.0`) из репозитория SDK — соседний клон для Docker-старта не нужен.
+Для разработки с живым соседним клоном есть override-файл:
+`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`
+монтирует `../sdk-bitrix-time-manager` в `/opt/sdk` (путь задаётся
+переменной `BITRIX_SDK_PATH`).
 
 ### 2.2. Локальный запуск без Docker
 
@@ -231,7 +232,8 @@ tasks:
 | `BITRIX_WEBHOOK_URL` | Обязателен: `https://портал/rest/USER_ID/СЕКРЕТ/` |
 | `BITRIX_TIMEZONE` | `Europe/Moscow`; должна совпадать с `timezone` в YAML |
 | `BITRIX_STATE_PATH` | Путь к SQLite-журналу. В Docker — `/app/state/operations.sqlite3` (монтируется в `state/` репо); без Docker по умолчанию не задан, действует дефолт SDK — `.state/operations.sqlite3` относительно каталога запуска |
-| `BITRIX_SDK_PATH` | Только Docker: путь к каталогу SDK, который монтируется в контейнер (`/opt/sdk`); по умолчанию — соседний `../sdk-bitrix-time-manager`. На локальный запуск не влияет |
+| `BITRIX_SDK_PATH` | Только Docker с override-файлом `docker-compose.dev.yml`: путь к живому клону SDK, монтируемому в контейнер (`/opt/sdk`) вместо вшитой версии; по умолчанию — соседний `../sdk-bitrix-time-manager`. В базовом Docker-старте и локальном запуске не используется |
+| `BITRIX_SDK_REF` | Только Docker: тег SDK, вшиваемый в образ при сборке (build-arg в `docker-compose.yml`); по умолчанию `v0.2.0`. Изменение действует после пересборки: `docker compose up -d --build` |
 | `BITRIX_TIMEOUT`, `BITRIX_READ_RETRIES` | Необязательны, см. документацию SDK |
 
 Разрешение записи включается только на время `apply`/`daemon` внутри

@@ -1,0 +1,9 @@
+# Override для локальной разработки: подменяет вшитый в образ SDK
+# живым соседним клоном (монтируется в /opt/sdk).
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# или COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml в .env
+# (разделитель ';' на Windows).
+services:
+  bitrix-auto:
+    volumes:
+      - ${BITRIX_SDK_PATH:-../sdk-bitrix-time-manager}:/opt/sdk:ro

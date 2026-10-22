@@ -1,6 +1,9 @@
 services:
   bitrix-auto:
-    build: .
+    build:
+      context: .
+      args:
+        BITRIX_SDK_REF: ${BITRIX_SDK_REF:-v0.2.0}
     container_name: bitrix-auto-manage
     restart: unless-stopped
     env_file:
@@ -12,4 +15,3 @@ services:
     volumes:
       - ./config:/app/config:ro
       - ./state:/app/state
-      - ${BITRIX_SDK_PATH:-../sdk-bitrix-time-manager}:/opt/sdk:ro

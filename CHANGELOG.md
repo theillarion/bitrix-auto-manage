@@ -19,6 +19,17 @@
 - С 1.0: минорная — обратно совместимые функции, патч — исправления,
   мажорная — несовместимые изменения.
 
+## [Unreleased]
+
+### Изменено
+
+- Docker: SDK вшивается в образ при сборке — multi-stage Dockerfile
+  клонирует `sdk-bitrix-time-manager` по тегу (build-arg `BITRIX_SDK_REF`, по
+  умолчанию `v0.2.0`); маунт соседнего каталога SDK вынесен из
+  `docker-compose.yml` в новый опциональный override
+  `docker-compose.dev.yml` (`BITRIX_SDK_PATH`). Docker-старт больше не
+  требует клона SDK рядом с репо.
+
 ## [0.3.1] - 2026-10-22
 
 ### Добавлено
