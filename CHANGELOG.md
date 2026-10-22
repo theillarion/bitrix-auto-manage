@@ -19,7 +19,7 @@
 - С 1.0: минорная — обратно совместимые функции, патч — исправления,
   мажорная — несовместимые изменения.
 
-## [Unreleased]
+## [0.3.1] - 2026-10-22
 
 ### Добавлено
 
@@ -138,7 +138,8 @@
   расписания.
 - Разработка: 25 offline-тестов (pytest), ruff, mypy strict.
 
-[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/theillarion/bitrix-auto-manage/releases/tag/v0.1.0

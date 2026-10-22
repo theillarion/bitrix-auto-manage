@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bitrix-auto-manage"
-version = "0.3.0"
+version = "0.3.1"
 description = "YAML-driven automation wrapper for bitrix-time-manager SDK"
 readme = "README.md"
 requires-python = ">=3.11"
