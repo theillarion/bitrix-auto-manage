@@ -104,6 +104,9 @@ def _load_settings(args: argparse.Namespace) -> Settings:
 
 async def _async_main(args: argparse.Namespace) -> int:
     paths = args.config or _default_config_paths()
+    if args.command == "daemon":
+        await run_daemon(paths, _load_settings(args), once=args.once)
+        return 0
     config = load_config(paths)
     settings = _load_settings(args)
 
@@ -117,10 +120,6 @@ async def _async_main(args: argparse.Namespace) -> int:
     if args.command == "show":
         report = await show_day(settings, args.date or date.today())
         print(json.dumps(report, ensure_ascii=False, indent=2, default=str))
-        return 0
-
-    if args.command == "daemon":
-        await run_daemon(config, settings, once=args.once)
         return 0
 
     days = _window(config, args)

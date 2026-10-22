@@ -3,12 +3,13 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from bitrix_time_manager.config import Settings
 from bitrix_time_manager.errors import TimeManagerError
 
-from bitrix_auto_manage.config import AppConfig, date_range, today_in
+from bitrix_auto_manage.config import AppConfig, date_range, load_config, today_in
 from bitrix_auto_manage.runner import RunSummary, run_window
 
 logger = logging.getLogger("bitrix_auto_manage")
@@ -36,22 +37,33 @@ async def _run_once(config: AppConfig, settings: Settings, *, dry_run: bool) -> 
     return summary
 
 
-async def run_daemon(config: AppConfig, settings: Settings, *, once: bool = False, dry_run: bool = False) -> None:
-    """Run immediately, then repeat daily at schedule.apply_time local time."""
-    if config.timezone != settings.timezone:
-        logger.warning(
-            "YAML timezone (%s) differs from BITRIX_TIMEZONE (%s); align the settings.",
-            config.timezone,
-            settings.timezone,
-        )
+async def run_daemon(paths: list[Path], settings: Settings, *, once: bool = False, dry_run: bool = False) -> None:
+    """Run immediately, then repeat daily at schedule.apply_time local time.
+
+    The YAML config is reloaded from `paths` before every run, including the
+    first one; a failed reload counts as a failed run (retry_minutes pause)
+    and the previously loaded config is never applied again.
+    """
+    config: AppConfig | None = None
     while True:
         try:
-            summary = await _run_once(config, settings, dry_run=dry_run)
+            loaded = load_config(paths)
+            config = loaded
+            if loaded.timezone != settings.timezone:
+                logger.warning(
+                    "YAML timezone (%s) differs from BITRIX_TIMEZONE (%s); align the settings.",
+                    loaded.timezone,
+                    settings.timezone,
+                )
+            summary = await _run_once(loaded, settings, dry_run=dry_run)
         except TimeManagerError as error:
             summary = RunSummary(failed=1)
             logger.error("Window run failed: %s", error)
         if once:
             raise SystemExit(0 if summary.ok else 1)
+        if config is None:
+            logger.error("No valid configuration loaded; exiting.")
+            raise SystemExit(1)
         zone = ZoneInfo(config.timezone)
         now = datetime.now(zone)
         if summary.ok:

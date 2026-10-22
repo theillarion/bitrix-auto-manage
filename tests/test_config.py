@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -222,6 +223,19 @@ schedule:
         with pytest.raises(ConfigurationError, match="literal_error"):
             load_config([path])
 
+    def test_unreadable_file_rejected(self, tmp_path: Path) -> None:
+        path = tmp_path / "secret.yaml"
+        path.write_text(MINIMAL, encoding="utf-8")
+        path.chmod(0o000)
+        try:
+            path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+        else:
+            pytest.skip("File permissions are not enforced for this user.")
+        with pytest.raises(ConfigurationError, match="Failed to read YAML file"):
+            load_config([path])
+
 
 class TestTodayIn:
     def test_returns_today_in_configured_timezone(self) -> None:
@@ -229,30 +243,37 @@ class TestTodayIn:
         assert today_in(config) == datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
 
 
+def planning_config(skip_dates: list[str] | None = None) -> AppConfig:
+    """Remote work on fridays plus time entries on mon-fri, optionally with skip dates."""
+    schedule: dict[str, Any] = {"skip_dates": skip_dates} if skip_dates is not None else {}
+    return AppConfig.model_validate(
+        {
+            "schedule": schedule,
+            "tasks": [
+                {
+                    "kind": "remote",
+                    "days": ["fri"],
+                    "start": "09:00",
+                    "end": "18:00",
+                    "comment": "Удалёнка",
+                },
+                {
+                    "kind": "time_entry",
+                    "days": ["mon-fri"],
+                    "contract": {"entity_type": 1298, "id": 2},
+                    "description": "Общие задачи",
+                    "hours": 7,
+                    "minutes": 30,
+                },
+            ],
+        }
+    )
+
+
 class TestPlanning:
     @pytest.fixture
     def config(self) -> AppConfig:
-        return AppConfig.model_validate(
-            {
-                "tasks": [
-                    {
-                        "kind": "remote",
-                        "days": ["fri"],
-                        "start": "09:00",
-                        "end": "18:00",
-                        "comment": "Удалёнка",
-                    },
-                    {
-                        "kind": "time_entry",
-                        "days": ["mon-fri"],
-                        "contract": {"entity_type": 1298, "id": 2},
-                        "description": "Общие задачи",
-                        "hours": 7,
-                        "minutes": 30,
-                    },
-                ]
-            }
-        )
+        return planning_config()
 
     def test_order_and_filtering(self, config: AppConfig) -> None:
         friday = date(2026, 10, 16)
@@ -308,6 +329,55 @@ class TestPlanning:
                     "on_existing_entries": "replace",
                 }
             )
+
+
+class TestSkipDates:
+    def test_default_is_empty_frozenset(self) -> None:
+        assert AppConfig().schedule.skip_dates == frozenset()
+
+    def test_parses_iso_strings(self, tmp_path: Path) -> None:
+        path = tmp_path / "skip.yaml"
+        path.write_text('schedule:\n  skip_dates: ["2026-11-03", "2026-11-10"]\n', encoding="utf-8")
+        assert load_config([path]).schedule.skip_dates == frozenset({date(2026, 11, 3), date(2026, 11, 10)})
+
+    def test_parses_unquoted_yaml_dates(self, tmp_path: Path) -> None:
+        path = tmp_path / "skip.yaml"
+        path.write_text("schedule:\n  skip_dates:\n    - 2026-11-03\n    - 2026-11-10\n", encoding="utf-8")
+        assert load_config([path]).schedule.skip_dates == frozenset({date(2026, 11, 3), date(2026, 11, 10)})
+
+    def test_duplicates_collapse_into_one_date(self, tmp_path: Path) -> None:
+        path = tmp_path / "skip.yaml"
+        path.write_text('schedule:\n  skip_dates: ["2026-11-03", "2026-11-03"]\n', encoding="utf-8")
+        assert load_config([path]).schedule.skip_dates == frozenset({date(2026, 11, 3)})
+
+    @pytest.mark.parametrize("element", ['"03.11.2026"', "20261103"])
+    def test_invalid_element_rejected_as_configuration_error(self, tmp_path: Path, element: str) -> None:
+        path = tmp_path / "skip.yaml"
+        path.write_text(f"schedule:\n  skip_dates: [{element}]\n", encoding="utf-8")
+        with pytest.raises(ConfigurationError, match="skip_dates"):
+            load_config([path])
+
+    def test_skipped_date_gives_empty_plan(self) -> None:
+        config = planning_config(skip_dates=["2026-10-16"])
+        assert plan_for_date(config, date(2026, 10, 16)) == []
+
+    def test_neighbouring_dates_still_planned(self) -> None:
+        config = planning_config(skip_dates=["2026-10-16"])
+        assert len(plan_for_date(config, date(2026, 10, 15))) == 1  # thursday: time entry only
+        assert len(plan_for_date(config, date(2026, 10, 23))) == 2  # next friday: both tasks
+
+    def test_later_file_replaces_skip_dates(self, tmp_path: Path) -> None:
+        base = tmp_path / "10-base.yaml"
+        base.write_text('schedule:\n  skip_dates: ["2026-11-03"]\n', encoding="utf-8")
+        patch = tmp_path / "20-patch.yaml"
+        patch.write_text('schedule:\n  skip_dates: ["2026-11-10"]\n', encoding="utf-8")
+        assert load_config([base, patch]).schedule.skip_dates == frozenset({date(2026, 11, 10)})
+
+    def test_unknown_key_beside_skip_dates_rejected(self, tmp_path: Path) -> None:
+        path = tmp_path / "skip.yaml"
+        path.write_text("schedule:\n  skip_dates: []\n  unknown_key: 1\n", encoding="utf-8")
+        with pytest.raises(ConfigurationError, match="unknown_key"):
+            load_config([path])
 
 
 class TestWindowAndKey:

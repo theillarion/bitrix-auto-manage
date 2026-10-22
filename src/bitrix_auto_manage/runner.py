@@ -50,6 +50,9 @@ async def run_window(config: AppConfig, settings: Settings, days: list[date], *,
     async with BitrixClient(settings) as client:
         manager = TimeManager(client)
         for day in days:
+            if day in config.schedule.skip_dates:
+                logger.info("%s: skipped by skip_dates", day.isoformat())
+                continue
             for task, spec in plan_for_date(config, day):
                 label = f"{day.isoformat()} {type(spec).__name__}"
                 try:

@@ -71,6 +71,7 @@ class ScheduleSection(BaseModel):
     horizon_days: int = Field(default=2, ge=0, le=30)
     backfill_days: int = Field(default=1, ge=0, le=30)
     retry_minutes: int = Field(default=20, ge=1, le=720)
+    skip_dates: frozenset[date] = Field(default_factory=frozenset)
 
 
 class ContractSection(BaseModel):
@@ -170,6 +171,8 @@ def load_config(paths: list[Path]) -> AppConfig:
             loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
         except yaml.YAMLError as error:
             raise ConfigurationError(f"Failed to parse YAML file {path}: {error}") from None
+        except OSError as error:
+            raise ConfigurationError(f"Failed to read YAML file {path}: {error}") from None
         if loaded is None:
             continue
         if not isinstance(loaded, dict):
@@ -197,6 +200,8 @@ def date_range(config: AppConfig, today: date) -> list[date]:
 
 def plan_for_date(config: AppConfig, day: date) -> list[tuple[TaskSection, RemoteWorkCreate | TimeEntryCreate]]:
     """Specs scheduled for this calendar day, ordered remote, time entry."""
+    if day in config.schedule.skip_dates:
+        return []
     plans: list[tuple[TaskSection, RemoteWorkCreate | TimeEntryCreate]] = []
     for task in sorted(config.tasks, key=lambda item: KIND_ORDER[item.kind]):
         if day.weekday() not in task.days:

@@ -25,10 +25,11 @@ def make_settings() -> Settings:
     return Settings(webhook_url=SecretStr(WEBHOOK))
 
 
-def make_config() -> AppConfig:
+def make_config(*, skip_dates: list[date] | None = None) -> AppConfig:
     return AppConfig.model_validate(
         {
             "timezone": "Europe/Moscow",
+            "schedule": {"skip_dates": [day.isoformat() for day in (skip_dates or [])]},
             "tasks": [
                 {"kind": "remote", "days": ["fri"], "start": "10:00", "end": "18:00"},
                 {
@@ -257,6 +258,19 @@ class TestRunWindow:
         assert all(call.spec.day == FRIDAY for call in recorder.calls)
         assert all(call.dry_run for call in recorder.calls)
         assert all(call.idempotency_key.startswith("auto:2026-10-16:") for call in recorder.calls)
+
+    async def test_skip_dates_exclude_day_entirely(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        recorder = install_fake(monkeypatch, Recorder())
+        with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"):
+            summary = await run_window(
+                make_config(skip_dates=[MONDAY]), make_settings(), [MONDAY, FRIDAY], dry_run=True
+            )
+        assert [call.spec.day for call in recorder.calls] == [FRIDAY, FRIDAY]
+        assert "2026-10-12: skipped by skip_dates" in caplog.text
+        assert summary.skipped == 0
+        assert summary.created == 2
 
 
 class TestShowDay:

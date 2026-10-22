@@ -180,15 +180,19 @@ class TestMainCommands:
     ) -> None:
         seen: dict[str, Any] = {}
 
-        async def fake_run_daemon(config: AppConfig, settings: Settings, *, once: bool) -> None:
-            seen.update(config=config, settings=settings, once=once)
+        async def fake_run_daemon(paths: list[Path], settings: Settings, *, once: bool) -> None:
+            seen.update(paths=paths, settings=settings, once=once)
+
+        def sentinel_loader(paths: list[Path]) -> AppConfig:
+            raise AssertionError("daemon must reload the config itself, not preload it in the CLI")
 
         monkeypatch.setattr(cli, "run_daemon", fake_run_daemon)
+        monkeypatch.setattr(cli, "load_config", sentinel_loader)
         with pytest.raises(SystemExit) as info:
             main(self.argv(config_path, missing_env, "daemon", "--once"))
         assert info.value.code == 0
         assert seen["once"] is True
-        assert isinstance(seen["config"], AppConfig)
+        assert seen["paths"] == [config_path]
         assert seen["settings"].webhook_url.get_secret_value() == WEBHOOK
 
     def test_preview_passes_dry_run_window(

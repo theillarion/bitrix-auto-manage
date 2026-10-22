@@ -3,12 +3,13 @@
 import asyncio
 import logging
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
 from bitrix_time_manager.config import Settings
-from bitrix_time_manager.errors import TimeManagerError
+from bitrix_time_manager.errors import ConfigurationError, TimeManagerError
 from pydantic import SecretStr
 
 from bitrix_auto_manage import scheduler
@@ -30,14 +31,33 @@ def make_config(**schedule: Any) -> AppConfig:
 
 
 class SleepSpy:
-    """Replaces scheduler.asyncio: records the requested pause and cancels the loop."""
+    """Replaces scheduler.asyncio: records the requested pauses, cancels the loop after N sleeps."""
 
-    def __init__(self) -> None:
+    def __init__(self, cancel_after: int = 1) -> None:
         self.seconds: list[float] = []
+        self._cancel_after = cancel_after
 
     async def sleep(self, seconds: float) -> None:
         self.seconds.append(seconds)
-        raise asyncio.CancelledError
+        if len(self.seconds) >= self._cancel_after:
+            raise asyncio.CancelledError
+
+
+class LoaderSpy:
+    """Replaces scheduler.load_config: yields queued outcomes, records paths and call order."""
+
+    def __init__(self, outcomes: list[AppConfig | Exception], events: list[str] | None = None) -> None:
+        self.outcomes = list(outcomes)
+        self.calls: list[list[Path]] = []
+        self.events = events if events is not None else []
+
+    def __call__(self, paths: list[Path]) -> AppConfig:
+        self.calls.append(list(paths))
+        self.events.append("load")
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
 
 class FakeDateTime:
@@ -46,6 +66,15 @@ class FakeDateTime:
     @classmethod
     def now(cls, tz: ZoneInfo) -> datetime:
         return datetime(2026, 10, 21, 12, 0, tzinfo=tz)
+
+
+def _run_window_returning(summary: RunSummary) -> Any:
+    """A run_window fake that always returns the given summary."""
+
+    async def fake_run_window(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
+        return summary
+
+    return fake_run_window
 
 
 class TestNextRun:
@@ -76,10 +105,14 @@ class TestFormatPause:
 
 
 class TestRunOnce:
-    async def test_runs_configured_window(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_runs_configured_window(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         seen: dict[str, Any] = {}
 
-        async def fake_run_window(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
+        async def fake_run_window(
+            config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool
+        ) -> RunSummary:
             seen["days"] = days
             seen["dry_run"] = dry_run
             return RunSummary(created=2)
@@ -96,67 +129,149 @@ class TestRunOnce:
 
 
 class TestRunDaemon:
-    async def test_once_exits_zero_on_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        async def fake_run_window(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
+    paths = [Path("/etc/bitrix/schedule.yaml")]
+
+    async def test_reloads_config_before_every_run(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        v1, v2 = make_config(horizon_days=2), make_config(horizon_days=5)
+        events: list[str] = []
+        loader = LoaderSpy([v1, v2], events)
+        monkeypatch.setattr(scheduler, "load_config", loader)
+        seen: list[AppConfig] = []
+
+        async def fake_run_window(
+            config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool
+        ) -> RunSummary:
+            seen.append(config)
+            events.append("run")
             return RunSummary(created=1)
 
         monkeypatch.setattr(scheduler, "run_window", fake_run_window)
+        monkeypatch.setattr(scheduler, "datetime", FakeDateTime)
+        spy = SleepSpy(cancel_after=2)
+        monkeypatch.setattr(scheduler, "asyncio", spy)
+        with pytest.raises(asyncio.CancelledError):
+            await run_daemon(self.paths, make_settings())
+        assert loader.calls == [self.paths, self.paths]
+        assert seen == [v1, v2]
+        assert events == ["load", "run", "load", "run"]
+
+    async def test_failed_reload_is_failed_run_and_old_config_stays_unapplied(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        v1 = make_config(retry_minutes=20)
+        loader = LoaderSpy([v1, ConfigurationError("Failed to parse YAML file bad.yaml: boom")])
+        monkeypatch.setattr(scheduler, "load_config", loader)
+        seen: list[AppConfig] = []
+
+        async def fake_run_window(
+            config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool
+        ) -> RunSummary:
+            seen.append(config)
+            return RunSummary(created=1)
+
+        monkeypatch.setattr(scheduler, "run_window", fake_run_window)
+        monkeypatch.setattr(scheduler, "datetime", FakeDateTime)
+        spy = SleepSpy(cancel_after=2)
+        monkeypatch.setattr(scheduler, "asyncio", spy)
+        with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"), pytest.raises(asyncio.CancelledError):
+            await run_daemon(self.paths, make_settings())
+        assert seen == [v1]
+        assert "Window run failed: Failed to parse YAML file bad.yaml: boom" in caplog.text
+        assert spy.seconds[1] == 20 * 60
+
+    async def test_first_load_failure_with_once_exits_one(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            scheduler, "load_config", LoaderSpy([ConfigurationError("Settings path not found: x.yaml")])
+        )
+
+        async def fake_run_window(
+            config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool
+        ) -> RunSummary:
+            pytest.fail("run_window must not be called when the first load fails")
+
+        monkeypatch.setattr(scheduler, "run_window", fake_run_window)
+        with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"), pytest.raises(SystemExit) as info:
+            await run_daemon(self.paths, make_settings(), once=True)
+        assert info.value.code == 1
+        assert "Window run failed: Settings path not found: x.yaml" in caplog.text
+
+    async def test_first_load_failure_without_once_exits_one(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            scheduler, "load_config", LoaderSpy([ConfigurationError("Failed to read YAML file x.yaml: e")])
+        )
+        monkeypatch.setattr(scheduler, "run_window", _run_window_returning(RunSummary()))
+        with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"), pytest.raises(SystemExit) as info:
+            await run_daemon(self.paths, make_settings())
+        assert info.value.code == 1
+        assert "No valid configuration loaded; exiting." in caplog.text
+
+    async def test_once_exits_zero_on_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([make_config()]))
+        monkeypatch.setattr(scheduler, "run_window", _run_window_returning(RunSummary(created=1)))
         with pytest.raises(SystemExit) as info:
-            await run_daemon(make_config(), make_settings(), once=True)
+            await run_daemon(self.paths, make_settings(), once=True)
         assert info.value.code == 0
 
     async def test_once_exits_one_when_summary_is_not_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        async def fake_run_window(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
-            return RunSummary(failed=1)
-
-        monkeypatch.setattr(scheduler, "run_window", fake_run_window)
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([make_config()]))
+        monkeypatch.setattr(scheduler, "run_window", _run_window_returning(RunSummary(failed=1)))
         with pytest.raises(SystemExit) as info:
-            await run_daemon(make_config(), make_settings(), once=True)
+            await run_daemon(self.paths, make_settings(), once=True)
         assert info.value.code == 1
 
     async def test_once_exits_one_on_manager_error(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        async def fake_run_window(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([make_config()]))
+
+        async def failing(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
             raise TimeManagerError("portal is unreachable")
 
-        monkeypatch.setattr(scheduler, "run_window", fake_run_window)
+        monkeypatch.setattr(scheduler, "run_window", failing)
         with pytest.raises(SystemExit) as info:
-            await run_daemon(make_config(), make_settings(), once=True)
+            await run_daemon(self.paths, make_settings(), once=True)
         assert info.value.code == 1
         assert "Window run failed: portal is unreachable" in caplog.text
 
-    async def test_timezone_mismatch_is_logged(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        async def fake_run_window(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
-            return RunSummary()
-
-        monkeypatch.setattr(scheduler, "run_window", fake_run_window)
-        with pytest.raises(SystemExit):
-            await run_daemon(make_config(), make_settings(timezone="Asia/Yekaterinburg"), once=True)
-        assert "YAML timezone (Europe/Moscow) differs from BITRIX_TIMEZONE (Asia/Yekaterinburg)" in caplog.text
+    async def test_timezone_mismatch_is_logged_after_every_reload(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([make_config(), make_config()]))
+        monkeypatch.setattr(scheduler, "run_window", _run_window_returning(RunSummary()))
+        monkeypatch.setattr(scheduler, "datetime", FakeDateTime)
+        spy = SleepSpy(cancel_after=2)
+        monkeypatch.setattr(scheduler, "asyncio", spy)
+        message = "YAML timezone (Europe/Moscow) differs from BITRIX_TIMEZONE (Asia/Yekaterinburg)"
+        with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"), pytest.raises(asyncio.CancelledError):
+            await run_daemon(self.paths, make_settings(timezone="Asia/Yekaterinburg"))
+        assert caplog.text.count(message) == 2
 
     async def test_loop_sleeps_until_next_apply_time(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        async def fake_run_window(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
-            return RunSummary(created=1)
-
-        monkeypatch.setattr(scheduler, "run_window", fake_run_window)
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([make_config()]))
+        monkeypatch.setattr(scheduler, "run_window", _run_window_returning(RunSummary(created=1)))
         monkeypatch.setattr(scheduler, "datetime", FakeDateTime)
         spy = SleepSpy()
         monkeypatch.setattr(scheduler, "asyncio", spy)
         with pytest.raises(asyncio.CancelledError):
-            await run_daemon(make_config(), make_settings())
+            await run_daemon(self.paths, make_settings())
         assert spy.seconds == [6 * 3600 + 5 * 60]
 
     async def test_loop_retries_after_configured_minutes(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        async def fake_run_window(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([make_config(retry_minutes=20)]))
+
+        async def failing(config: AppConfig, settings: Settings, days: list[date], *, dry_run: bool) -> RunSummary:
             raise TimeManagerError("temporary failure")
 
-        monkeypatch.setattr(scheduler, "run_window", fake_run_window)
+        monkeypatch.setattr(scheduler, "run_window", failing)
         spy = SleepSpy()
         monkeypatch.setattr(scheduler, "asyncio", spy)
         with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"), pytest.raises(asyncio.CancelledError):
-            await run_daemon(make_config(retry_minutes=20), make_settings())
+            await run_daemon(self.paths, make_settings())
         assert spy.seconds == [20 * 60]
         assert "Retrying in 20 minutes." in caplog.text
