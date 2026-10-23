@@ -21,6 +21,8 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-24
+
 ### Добавлено
 
 - YAML: `schedule.apply_time` поддерживает окно случайного времени
@@ -202,7 +204,8 @@
   расписания.
 - Разработка: 25 offline-тестов (pytest), ruff, mypy strict.
 
-[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/theillarion/bitrix-auto-manage/compare/v0.3.0...v0.3.1

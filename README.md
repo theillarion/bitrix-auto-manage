@@ -5,7 +5,7 @@
 Автозаполнение Тайм-менеджера Bitrix24 из YAML-расписания: демон в Docker
 или cron заранее выставляет удалёнку и добавляет учет времени.
 
-[![release](https://img.shields.io/badge/release-v0.4.1-blue)](https://github.com/theillarion/bitrix-auto-manage/tree/v0.4.1)
+[![release](https://img.shields.io/badge/release-v0.5.0-blue)](https://github.com/theillarion/bitrix-auto-manage/tree/v0.5.0)
 [![python](https://img.shields.io/badge/python-%E2%88%A53.11-007ec6)](pyproject.toml)
 [![License: MIT](https://img.shields.io/github/license/theillarion/bitrix-auto-manage)](LICENSE)
 [![stars](https://img.shields.io/github/stars/theillarion/bitrix-auto-manage)](https://github.com/theillarion/bitrix-auto-manage)

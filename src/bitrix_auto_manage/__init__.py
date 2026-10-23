@@ -3,6 +3,6 @@
 from bitrix_auto_manage.config import AppConfig, load_config, plan_for_date
 from bitrix_auto_manage.runner import run_window
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 __all__ = ["AppConfig", "load_config", "plan_for_date", "run_window"]
