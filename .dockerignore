@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+*.pyc
+state
+.env
+.agents-cache
+tests
+docs
+.github
+install.sh
+docker-compose*.yml
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.coverage
+*.egg-info

@@ -1,0 +1,17 @@
+# Запуск готового образа с ghcr.io — без клонирования репозитория и без сборки.
+# Заберите в пустой каталог:
+#   curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/theillarion/bitrix-auto-manage/<ref>/docker-compose.ghcr.yml
+services:
+  bitrix-auto:
+    image: ghcr.io/theillarion/bitrix-auto-manage:${BITRIX_AUTO_TAG:-latest}
+    container_name: bitrix-auto-manage
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BITRIX_STATE_PATH: /app/state/operations.sqlite3
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - ./config:/app/config:ro
+      - ./state:/app/state

@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     daemon = commands.add_parser(
         "daemon",
         parents=[common],
-        help="Постоянный режим: прогон окна каждый день в schedule.apply_time.",
+        help="Постоянный режим: прогон окна каждый день в случайное время внутри schedule.apply_time.",
     )
     daemon.add_argument("--once", action="store_true", help="Один прогон окна и выход (для cron/планировщика ОС).")
     return parser

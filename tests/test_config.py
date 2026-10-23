@@ -12,6 +12,8 @@ from pydantic import ValidationError
 
 from bitrix_auto_manage.config import (
     AppConfig,
+    ApplyWindow,
+    ScheduleSection,
     TaskSection,
     date_range,
     idempotency_key,
@@ -111,13 +113,87 @@ class TestTaskSection:
             )
 
 
+class TestApplyTime:
+    def test_interval_string_parses_to_window(self) -> None:
+        section = ScheduleSection.model_validate({"apply_time": "16:00-19:00"})
+        assert section.apply_time == ApplyWindow(start=time(16, 0), end=time(19, 0))
+
+    def test_single_string_parses_to_degenerate_window(self) -> None:
+        section = ScheduleSection.model_validate({"apply_time": "18:05"})
+        assert section.apply_time == ApplyWindow(start=time(18, 5), end=time(18, 5))
+
+    def test_time_object_parses_to_degenerate_window(self) -> None:
+        section = ScheduleSection.model_validate({"apply_time": time(18, 5)})
+        assert section.apply_time == ApplyWindow(start=time(18, 5), end=time(18, 5))
+
+    def test_spaces_around_interval_are_tolerated(self) -> None:
+        section = ScheduleSection.model_validate({"apply_time": " 16:00 - 19:00 "})
+        assert section.apply_time == ApplyWindow(start=time(16, 0), end=time(19, 0))
+
+    def test_default_is_window_16_19(self) -> None:
+        assert AppConfig().schedule.apply_time == ApplyWindow(start=time(16, 0), end=time(19, 0))
+
+    @pytest.mark.parametrize("value", ["15:00-13:00", "22:00-02:00", "16:00-16:00", "19:00-19:00"])
+    def test_non_increasing_interval_rejected(self, value: str) -> None:
+        with pytest.raises(ValidationError, match="start must be earlier than end"):
+            ScheduleSection.model_validate({"apply_time": value})
+
+    @pytest.mark.parametrize(
+        "value",
+        ["24:00-25:00", "9:00-18:00", "16:00-", "18:05:30", "16:00-19:00:30", "16:00-19:00-20:00", "five o'clock"],
+    )
+    def test_malformed_string_rejected(self, value: str) -> None:
+        with pytest.raises(ValidationError, match="apply_time must be 'HH:MM' or 'HH:MM-HH:MM'"):
+            ScheduleSection.model_validate({"apply_time": value})
+
+    @pytest.mark.parametrize("value", [960, 18.05, ["16:00", "19:00"], {"start": "16:00", "end": "19:00"}])
+    def test_non_string_rejected_with_quotes_hint(self, value: Any) -> None:
+        with pytest.raises(ValidationError, match="unquoted 16:00 is read by YAML as the number 960"):
+            ScheduleSection.model_validate({"apply_time": value})
+
+    def test_model_constructor_still_checks_single_day(self) -> None:
+        with pytest.raises(ValidationError, match="start must be earlier than end"):
+            ApplyWindow(start=time(19, 0), end=time(16, 0))
+
+    def test_unknown_apply_window_field_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ScheduleSection.model_validate({"apply_time": {"start": "16:00", "end": "19:00"}})
+
+    def test_unquoted_yaml_time_rejected_with_quotes_hint(self, tmp_path: Path) -> None:
+        path = tmp_path / "unquoted.yaml"
+        path.write_text("schedule:\n  apply_time: 16:00\n", encoding="utf-8")
+        with pytest.raises(ConfigurationError, match="quote the value"):
+            load_config([path])
+
+    def test_unquoted_yaml_interval_is_a_string_and_works(self, tmp_path: Path) -> None:
+        path = tmp_path / "unquoted-interval.yaml"
+        path.write_text("schedule:\n  apply_time: 16:00-19:00\n", encoding="utf-8")
+        assert load_config([path]).schedule.apply_time == ApplyWindow(start=time(16, 0), end=time(19, 0))
+
+    def test_later_file_overrides_single_time_with_interval(self, tmp_path: Path) -> None:
+        base = tmp_path / "10-base.yaml"
+        base.write_text('schedule:\n  apply_time: "17:45"\n', encoding="utf-8")
+        patch = tmp_path / "20-patch.yaml"
+        patch.write_text('schedule:\n  apply_time: "16:00-19:00"\n', encoding="utf-8")
+        config = load_config([base, patch])
+        assert config.schedule.apply_time == ApplyWindow(start=time(16, 0), end=time(19, 0))
+
+    def test_later_file_overrides_interval_with_single_time(self, tmp_path: Path) -> None:
+        base = tmp_path / "10-base.yaml"
+        base.write_text('schedule:\n  apply_time: "16:00-19:00"\n', encoding="utf-8")
+        patch = tmp_path / "20-patch.yaml"
+        patch.write_text('schedule:\n  apply_time: "17:45"\n', encoding="utf-8")
+        config = load_config([base, patch])
+        assert config.schedule.apply_time == ApplyWindow(start=time(17, 45), end=time(17, 45))
+
+
 class TestLoadConfig:
     def test_minimal(self, tmp_path: Path) -> None:
         path = tmp_path / "schedule.yaml"
         path.write_text(MINIMAL, encoding="utf-8")
         config = load_config([path])
         assert config.timezone == "Europe/Moscow"
-        assert config.schedule.apply_time == time(18, 5)
+        assert config.schedule.apply_time == ApplyWindow(start=time(16, 0), end=time(19, 0))
         assert len(config.tasks) == 1
 
     def test_merge_extends_tasks_and_overrides_scalars(self, tmp_path: Path) -> None:
@@ -137,7 +213,7 @@ tasks:
             encoding="utf-8",
         )
         config = load_config([first, second])
-        assert config.schedule.apply_time == time(17, 0)
+        assert config.schedule.apply_time == ApplyWindow(start=time(17, 0), end=time(17, 0))
         assert [task.kind for task in config.tasks] == ["remote", "remote"]
 
     def test_directory_is_scanned_in_order(self, tmp_path: Path) -> None:
@@ -188,7 +264,7 @@ schedule:
         config = load_config([base, patch])
         assert config.schedule.horizon_days == 1
         assert config.schedule.backfill_days == 3
-        assert config.schedule.apply_time == time(18, 5)
+        assert config.schedule.apply_time == ApplyWindow(start=time(16, 0), end=time(19, 0))
 
     def test_missing_path_rejected(self, tmp_path: Path) -> None:
         with pytest.raises(ConfigurationError, match="Settings path not found"):

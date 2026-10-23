@@ -29,8 +29,10 @@ YAML-конфигурация, планировщик и команды `bitrix-
 
 1. [Возможности](#1-возможности)
 2. [Быстрый старт](#2-быстрый-старт)
-    1. [Docker](#21-docker)
-    2. [Локальный запуск без Docker](#22-локальный-запуск-без-docker)
+    - [2.1. Docker](#21-docker)
+        - [2.1.1. Готовый образ из ghcr.io](#211-готовый-образ-из-ghcrio)
+        - [2.1.2. Сборка из репозитория](#212-сборка-из-репозитория)
+    - [2.2. Локальный запуск без Docker](#22-локальный-запуск-без-docker)
 3. [Команды](#3-команды)
 4. [Формат YAML](#4-формат-yaml)
 5. [Настройки окружения (`.env`)](#5-настройки-окружения-env)
@@ -55,6 +57,166 @@ YAML-конфигурация, планировщик и команды `bitrix-
 
 ### 2.1. Docker
 
+**Установка Docker**
+
+Если Docker ещё не установлен:
+
+- **Linux** — быстрый способ: официальный скрипт Docker (предварительно
+  просмотреть — https://get.docker.com; скрипт предназначен для быстрых
+  dev-окружений, для продакшена Docker рекомендует пакетный менеджер
+  дистрибутива — https://docs.docker.com/engine/install/):
+  ```bash
+  curl -fsSL https://get.docker.com -o get-docker.sh
+  sudo sh get-docker.sh
+  ```
+  Чтобы работать без `sudo`, добавьте себя в группу docker
+  (`sudo usermod -aG docker $USER`) и перелогиньтесь.
+- **macOS / Windows** — [Docker Desktop](https://docs.docker.com/desktop/).
+
+Для запуска проекта нужен Docker с Compose v2 (≥2.24) — установщик
+`install.sh` сам проверит это и подскажет.
+
+#### 2.1.1. Готовый образ из ghcr.io
+
+Готовый multi-arch образ (linux/amd64 и linux/arm64) публикуется CI по тегу
+`vX.Y.Z` в реестр
+[ghcr.io/theillarion/bitrix-auto-manage](https://github.com/theillarion/bitrix-auto-manage/pkgs/container/bitrix-auto-manage).
+Клонировать репозиторий и собирать образ не нужно — установка занимает
+одну команду.
+
+**Быстрая установка**
+
+В пустом каталоге выполните one-liner (нужны `sh` и `curl`):
+
+```sh
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/theillarion/bitrix-auto-manage/master/install.sh)"
+```
+
+Скрипт создаёт `config/` и `state/` и скачивает три файла —
+`docker-compose.yml`, `config/schedule.yaml`, `.env`; существующие файлы
+не перезаписываются. Для запуска нужен установленный Docker с Compose v2
+([установка](https://docs.docker.com/engine/install/)) — установщик сам
+проверит это и подскажет при отсутствии.
+
+**Настройка**
+
+- `.env` — впишите свой вебхук `BITRIX_WEBHOOK_URL` (как получить —
+  [docs/setup.md](docs/setup.md), Часть 1);
+- `config/schedule.yaml` — отредактируйте под своё расписание; справочник
+  полей — в [docs/setup.md](docs/setup.md).
+
+Итоговый каталог:
+
+```
+bitrix-auto/
+├── docker-compose.yml
+├── .env
+├── config/
+│   └── schedule.yaml
+└── state/                       # SQLite-журнал операций
+```
+
+**Предварительная проверка**
+
+```bash
+docker compose run --rm bitrix-auto check      # вебхук и схема портала (read-only)
+docker compose run --rm bitrix-auto preview --config config/schedule.yaml \
+    --days 3        # план записей на ближайшие три дня, без записи
+```
+
+**Запуск**
+
+```bash
+docker compose up -d
+```
+
+**Просмотр логов**
+
+```bash
+docker compose logs -f
+```
+
+**Обновление**
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+По умолчанию тянется `latest`; про конкретную версию — в подразделе
+«Установка конкретной версии» ниже.
+
+##### Установка конкретной версии
+
+По умолчанию one-liner ставит тег последнего релиза. Конкретная версия —
+последним аргументом (тег релиза или ветка):
+
+```sh
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/theillarion/bitrix-auto-manage/master/install.sh)" sh v0.4.1
+```
+
+Версию уже установленного образа можно зафиксировать переменной
+`BITRIX_AUTO_TAG` в `.env` — тег образа `X.Y.Z` без префикса `v`
+(`BITRIX_AUTO_TAG=0.4.1`). Образ перестанет следовать за `latest`;
+обновление — сменить значение и выполнить `docker compose pull && docker compose up -d`.
+
+##### Изучение скрипта перед запуском
+
+Чтобы сначала посмотреть код скрипта, а потом его выполнять, — скачайте
+его и запустите bash'ем:
+
+```bash
+curl -fsSLo install.sh https://raw.githubusercontent.com/theillarion/bitrix-auto-manage/master/install.sh
+bash install.sh [ref]       # ref — тег релиза или ветка; без аргумента — последний релиз
+```
+
+##### Ручная установка
+
+Без скрипта: в пустом каталоге создайте `config/` и `state/`
+(`mkdir -p config state`) и подготовьте те же три файла.
+
+`docker-compose.yml` — копипастой:
+
+```yaml
+services:
+  bitrix-auto:
+    image: ghcr.io/theillarion/bitrix-auto-manage:${BITRIX_AUTO_TAG:-latest}
+    container_name: bitrix-auto-manage
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BITRIX_STATE_PATH: /app/state/operations.sqlite3
+      TZ: ${TZ:-Europe/Moscow}
+    volumes:
+      - ./config:/app/config:ro
+      - ./state:/app/state
+```
+
+Минимальный `.env`:
+
+```dotenv
+BITRIX_WEBHOOK_URL=...          # ваш вебхук; как получить — docs/setup.md, Часть 1
+BITRIX_TIMEZONE=Europe/Moscow
+```
+
+`config/schedule.yaml` — копия `config/schedule.example.yaml` репозитория
+(справочник полей — в [docs/setup.md](docs/setup.md)).
+
+Вместо копипасты те же три файла можно скачать curl'ом — по тегу релиза
+(или `master`):
+
+```bash
+REF=v0.4.1
+curl -fsSLo docker-compose.yml https://raw.githubusercontent.com/theillarion/bitrix-auto-manage/$REF/docker-compose.ghcr.yml
+curl -fsSLo config/schedule.yaml https://raw.githubusercontent.com/theillarion/bitrix-auto-manage/$REF/config/schedule.example.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/theillarion/bitrix-auto-manage/$REF/.env.example
+```
+
+Команды проверки и запуска — те же, что в основной части раздела выше.
+
+#### 2.1.2. Сборка из репозитория
+
 **Подготовка окружения**
 
 ```bash
@@ -77,7 +239,7 @@ docker compose run --rm bitrix-auto preview --config config/schedule.yaml \
 docker compose up -d --build
 ```
 
-**Проверка логов**
+**Просмотр логов**
 
 ```bash
 docker compose logs -f                # смотреть журнал прогонов
@@ -87,8 +249,10 @@ CLI-команды выполняются в контейнере через
 `docker compose run --rm bitrix-auto <команда>`; на хосте они доступны
 только после pip-установки (раздел 2.2).
 
-Демон при старте сразу применяет окно дат, затем повторяет каждый день в
-`schedule.apply_time` (локальное время из YAML). Перед каждым прогоном демон
+Демон при старте сразу применяет окно дат, затем повторяет каждый день
+в случайное время внутри `schedule.apply_time` (локальное время из YAML;
+формат — окно `"16:00-19:00"` или точное время `"17:45"` — тогда без рандома).
+Перед каждым прогоном демон
 перечитывает YAML-расписание: правки (в том числе добавление дат в
 `skip_dates`) подхватываются без рестарта, а ошибка конфигурации считается
 неудачным прогоном — повтор через `retry_minutes`; после сбоя повторяет
@@ -162,7 +326,7 @@ bitrix-auto show --date 2026-10-19   # день, удалёнка и учет в
 | `preview` | Показать план для окна дат без записей (`status: preview`) |
 | `apply` | Реально создать записи окна; повторный запуск вернет `existing` |
 | `show --date 2026-10-19` | Показать день, удалёнку и учет времени за дату |
-| `daemon` | Прогон окна при старте, затем ежедневно в `apply_time` |
+| `daemon` | Прогон окна при старте, затем ежедневно в случайное время внутри `apply_time` |
 | `daemon --once` | Один прогон окна и выход |
 
 Общие флаги указываются после подкоманды: `--config PATH` (файл или каталог,
@@ -183,7 +347,8 @@ bitrix-auto show --date 2026-10-19   # день, удалёнка и учет в
 timezone: Europe/Moscow        # должна совпадать с BITRIX_TIMEZONE
 
 schedule:
-  apply_time: "17:45"          # локальное время ежедневного прогона демона
+  apply_time: "16:00-19:00"    # окно случайного времени прогона демона
+                               # (или точное время "17:45" — без рандома)
   horizon_days: 2              # выставлять на сегодня и 2 дня вперед
   backfill_days: 4             # догонять до 4 прошедших дней после простоя
   retry_minutes: 60            # повтор после неудачного прогона

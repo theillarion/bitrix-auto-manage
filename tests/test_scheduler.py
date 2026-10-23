@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,22 @@ def make_settings(timezone: str = "Europe/Moscow") -> Settings:
 def make_config(**schedule: Any) -> AppConfig:
     values: dict[str, Any] = {"apply_time": "18:05", **schedule}
     return AppConfig.model_validate({"timezone": "Europe/Moscow", "schedule": values})
+
+
+def window_config() -> AppConfig:
+    return make_config(apply_time="16:00-19:00")
+
+
+class FakeRng:
+    """Deterministic random.Random stand-in: randint always returns the given minute."""
+
+    def __init__(self, minute: int) -> None:
+        self.minute = minute
+        self.calls: list[tuple[int, int]] = []
+
+    def randint(self, low: int, high: int) -> int:
+        self.calls.append((low, high))
+        return self.minute
 
 
 class SleepSpy:
@@ -67,6 +84,10 @@ class FakeDateTime:
     def now(cls, tz: ZoneInfo) -> datetime:
         return datetime(2026, 10, 21, 12, 0, tzinfo=tz)
 
+    @classmethod
+    def combine(cls, day: date, moment: time, tzinfo: ZoneInfo | None = None) -> datetime:
+        return datetime.combine(day, moment, tzinfo=tzinfo)
+
 
 def _run_window_returning(summary: RunSummary) -> Any:
     """A run_window fake that always returns the given summary."""
@@ -77,22 +98,125 @@ def _run_window_returning(summary: RunSummary) -> Any:
     return fake_run_window
 
 
-class TestNextRun:
+class TestNextRunSingleTime:
+    """Legacy 'HH:MM' apply_time: degenerate window, no randomness in effect."""
+
+    APPLY = 18 * 60 + 5
+
     def test_before_apply_time_runs_today(self) -> None:
+        rng = FakeRng(self.APPLY)
         now = datetime(2026, 10, 21, 15, 0, tzinfo=MOSCOW)
-        assert _next_run(make_config(), now) == datetime(2026, 10, 21, 18, 5, tzinfo=MOSCOW)
+        assert _next_run(make_config(), now, rng) == datetime(2026, 10, 21, 18, 5, tzinfo=MOSCOW)
+        assert rng.calls == [(self.APPLY, self.APPLY)]
+
+    def test_last_second_before_apply_time_runs_today(self) -> None:
+        rng = FakeRng(self.APPLY)
+        now = datetime(2026, 10, 21, 18, 4, 30, tzinfo=MOSCOW)
+        assert _next_run(make_config(), now, rng) == datetime(2026, 10, 21, 18, 5, tzinfo=MOSCOW)
 
     def test_exactly_at_apply_time_runs_tomorrow(self) -> None:
+        rng = FakeRng(self.APPLY)
         now = datetime(2026, 10, 21, 18, 5, 0, tzinfo=MOSCOW)
-        assert _next_run(make_config(), now) == datetime(2026, 10, 22, 18, 5, tzinfo=MOSCOW)
+        assert _next_run(make_config(), now, rng) == datetime(2026, 10, 22, 18, 5, tzinfo=MOSCOW)
+        assert rng.calls == [(self.APPLY, self.APPLY)]
 
-    def test_inside_startup_grace_runs_tomorrow(self) -> None:
+    def test_at_or_after_apply_time_runs_tomorrow(self) -> None:
+        rng = FakeRng(self.APPLY)
         now = datetime(2026, 10, 21, 18, 5, 10, tzinfo=MOSCOW)
-        assert _next_run(make_config(), now) == datetime(2026, 10, 22, 18, 5, tzinfo=MOSCOW)
+        assert _next_run(make_config(), now, rng) == datetime(2026, 10, 22, 18, 5, tzinfo=MOSCOW)
 
     def test_long_after_apply_time_runs_tomorrow(self) -> None:
+        rng = FakeRng(self.APPLY)
         now = datetime(2026, 10, 21, 21, 30, tzinfo=MOSCOW)
-        assert _next_run(make_config(), now) == datetime(2026, 10, 22, 18, 5, tzinfo=MOSCOW)
+        assert _next_run(make_config(), now, rng) == datetime(2026, 10, 22, 18, 5, tzinfo=MOSCOW)
+
+
+class TestNextRunWindow:
+    """Interval apply_time 16:00-19:00: full-window draw on the next not-yet-started day."""
+
+    def test_first_start_before_window_full_window_today(self) -> None:
+        rng = FakeRng(17 * 60 + 15)
+        now = datetime(2026, 10, 21, 12, 0, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 21, 17, 15, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_second_before_window_start_full_window_today(self) -> None:
+        # Even a microsecond before the start keeps today's FULL window (16:00 included).
+        rng = FakeRng(16 * 60)
+        now = datetime(2026, 10, 21, 15, 59, 59, 999999, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 21, 16, 0, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_exactly_at_window_start_goes_to_tomorrow(self) -> None:
+        # At the start the window has already begun -> tomorrow, full window.
+        rng = FakeRng(17 * 60 + 15)
+        now = datetime(2026, 10, 21, 16, 0, 0, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 22, 17, 15, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_inside_window_goes_to_tomorrow_no_second_run_today(self) -> None:
+        rng = FakeRng(18 * 60 + 20)
+        now = datetime(2026, 10, 21, 17, 30, 0, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 22, 18, 20, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_inside_window_fractional_second_goes_to_tomorrow(self) -> None:
+        rng = FakeRng(16 * 60)
+        now = datetime(2026, 10, 21, 17, 30, 59, 900000, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 22, 16, 0, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_last_minute_of_window_goes_to_tomorrow(self) -> None:
+        rng = FakeRng(19 * 60)
+        now = datetime(2026, 10, 21, 18, 59, 40, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 22, 19, 0, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_just_after_window_end_goes_to_tomorrow_full_window(self) -> None:
+        rng = FakeRng(18 * 60 + 20)
+        now = datetime(2026, 10, 21, 19, 0, 10, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 22, 18, 20, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_long_after_window_goes_to_tomorrow(self) -> None:
+        rng = FakeRng(19 * 60)
+        now = datetime(2026, 10, 21, 21, 30, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 22, 19, 0, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_late_evening_before_midnight_goes_to_tomorrow(self) -> None:
+        # Midnight crossing needs no special case: the window has long started.
+        rng = FakeRng(17 * 60)
+        now = datetime(2026, 10, 21, 23, 59, 45, tzinfo=MOSCOW)
+        assert _next_run(window_config(), now, rng) == datetime(2026, 10, 22, 17, 0, tzinfo=MOSCOW)
+        assert rng.calls == [(16 * 60, 19 * 60)]
+
+    def test_full_day_window_run_after_midnight_goes_to_next_day(self) -> None:
+        # Owner's case: window 00:00-23:59, woke at 23:59 of day X, finished at
+        # 00:01 of day Y. Day Y's window has already started (00:01 >= 00:00),
+        # so the draw covers the FULL window of Y+1; the passed 00:00 of day Y
+        # can never be picked.
+        rng = FakeRng(12 * 60 + 34)
+        config = make_config(apply_time="00:00-23:59")
+        now = datetime(2026, 10, 22, 0, 1, tzinfo=MOSCOW)
+        assert _next_run(config, now, rng) == datetime(2026, 10, 23, 12, 34, tzinfo=MOSCOW)
+        assert rng.calls == [(0, 23 * 60 + 59)]
+
+    def test_chosen_minute_has_zero_seconds(self) -> None:
+        rng = FakeRng(16 * 60 + 23)
+        now = datetime(2026, 10, 21, 12, 0, 17, 500000, tzinfo=MOSCOW)
+        picked = _next_run(window_config(), now, rng)
+        assert picked == datetime(2026, 10, 21, 16, 23, 0, 0, tzinfo=MOSCOW)
+
+    def test_chosen_moment_uses_yaml_timezone(self) -> None:
+        zone = ZoneInfo("Asia/Yekaterinburg")
+        config = AppConfig.model_validate({"timezone": "Asia/Yekaterinburg", "schedule": {"apply_time": "16:00-19:00"}})
+        rng = FakeRng(17 * 60)
+        now = datetime(2026, 10, 21, 12, 0, tzinfo=zone)
+        picked = _next_run(config, now, rng)
+        assert picked.tzinfo is zone
+        assert picked.utcoffset() == now.utcoffset()
+        assert picked == datetime(2026, 10, 21, 17, 0, tzinfo=zone)
 
 
 class TestFormatPause:
@@ -255,14 +379,15 @@ class TestRunDaemon:
         assert caplog.text.count(message) == 2
 
     async def test_loop_sleeps_until_next_apply_time(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([make_config()]))
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([window_config()]))
         monkeypatch.setattr(scheduler, "run_window", _run_window_returning(RunSummary(created=1)))
         monkeypatch.setattr(scheduler, "datetime", FakeDateTime)
+        monkeypatch.setattr(scheduler, "random", SimpleNamespace(Random=lambda: FakeRng(17 * 60)))
         spy = SleepSpy()
         monkeypatch.setattr(scheduler, "asyncio", spy)
         with pytest.raises(asyncio.CancelledError):
             await run_daemon(self.paths, make_settings())
-        assert spy.seconds == [6 * 3600 + 5 * 60]
+        assert spy.seconds == [5 * 3600]
 
     async def test_success_logs_next_run_time_and_pause(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -275,6 +400,20 @@ class TestRunDaemon:
         with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"), pytest.raises(asyncio.CancelledError):
             await run_daemon(self.paths, make_settings())
         assert "Next run at 18:05 (in 06:05)." in caplog.text
+
+    async def test_success_logs_window_for_interval_apply_time(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(scheduler, "load_config", LoaderSpy([window_config()]))
+        monkeypatch.setattr(scheduler, "run_window", _run_window_returning(RunSummary(created=1)))
+        monkeypatch.setattr(scheduler, "datetime", FakeDateTime)
+        monkeypatch.setattr(scheduler, "random", SimpleNamespace(Random=lambda: FakeRng(17 * 60)))
+        spy = SleepSpy()
+        monkeypatch.setattr(scheduler, "asyncio", spy)
+        with caplog.at_level(logging.INFO, logger="bitrix_auto_manage"), pytest.raises(asyncio.CancelledError):
+            await run_daemon(self.paths, make_settings())
+        assert "Next run at 17:00 (in 05:00, window 16:00-19:00)." in caplog.text
+        assert spy.seconds == [5 * 3600]
 
     async def test_loop_retries_after_configured_minutes(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture

@@ -29,6 +29,9 @@ WEEKDAY_NAMES = {
 
 KIND_ORDER = {"remote": 0, "time_entry": 1}
 
+_APPLY_TIME_SINGLE = re.compile(r"\s*([01]\d|2[0-3]):([0-5]\d)\s*")
+_APPLY_TIME_INTERVAL = re.compile(r"\s*([01]\d|2[0-3]):([0-5]\d)\s*-\s*([01]\d|2[0-3]):([0-5]\d)\s*")
+
 
 def parse_weekdays(value: Any) -> frozenset[int]:
     """Parse 'mon-fri', ['sat', 'sun', 'пн-чт'] into a set of weekday numbers."""
@@ -62,16 +65,61 @@ def parse_weekdays(value: Any) -> frozenset[int]:
     return frozenset(days)
 
 
+class ApplyWindow(BaseModel):
+    """Daily apply window: a fixed time (start == end) or a single-day interval."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    start: time
+    end: time
+
+    @model_validator(mode="after")
+    def check_single_day(self) -> Self:
+        if self.start > self.end:
+            raise ValueError(
+                "apply_time interval must stay within a single day: "
+                f"start must be earlier than end (got {self.start:%H:%M}-{self.end:%H:%M})."
+            )
+        return self
+
+
 class ScheduleSection(BaseModel):
     """Daemon timing: when to run and which date window to cover."""
 
     model_config = ConfigDict(extra="forbid")
 
-    apply_time: time = time(18, 5)
+    apply_time: ApplyWindow = ApplyWindow(start=time(16, 0), end=time(19, 0))
     horizon_days: int = Field(default=2, ge=0, le=30)
     backfill_days: int = Field(default=1, ge=0, le=30)
     retry_minutes: int = Field(default=20, ge=1, le=720)
     skip_dates: frozenset[date] = Field(default_factory=frozenset)
+
+    @field_validator("apply_time", mode="before")
+    @classmethod
+    def parse_apply_time(cls, value: Any) -> Any:
+        """Accept 'HH:MM' (fixed time), 'HH:MM-HH:MM' (single-day interval) or a time object."""
+        if isinstance(value, time):
+            return ApplyWindow(start=value, end=value)
+        if isinstance(value, str):
+            interval = _APPLY_TIME_INTERVAL.fullmatch(value)
+            if interval:
+                start = time(int(interval[1]), int(interval[2]))
+                end = time(int(interval[3]), int(interval[4]))
+                if start >= end:
+                    raise ValueError(
+                        "apply_time interval must stay within a single day: "
+                        f"start must be earlier than end (got {value.strip()!r})."
+                    )
+                return ApplyWindow(start=start, end=end)
+            single = _APPLY_TIME_SINGLE.fullmatch(value)
+            if single:
+                moment = time(int(single[1]), int(single[2]))
+                return ApplyWindow(start=moment, end=moment)
+            raise ValueError(f"apply_time must be 'HH:MM' or 'HH:MM-HH:MM' (got {value.strip()!r}).")
+        raise ValueError(
+            "apply_time must be a quoted 'HH:MM' or 'HH:MM-HH:MM' string; "
+            "unquoted 16:00 is read by YAML as the number 960 — quote the value."
+        )
 
 
 class ContractSection(BaseModel):

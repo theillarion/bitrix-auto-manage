@@ -1,8 +1,9 @@
-"""Daemon loop: run the date window at a fixed local time every day."""
+"""Daemon loop: run the date window daily at a random time inside apply_time."""
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+import random
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -14,19 +15,23 @@ from bitrix_auto_manage.runner import RunSummary, run_window
 
 logger = logging.getLogger("bitrix_auto_manage")
 
-STARTUP_GRACE = timedelta(seconds=30)
 
+def _next_run(config: AppConfig, now: datetime, rng: random.Random) -> datetime:
+    """Pick a random minute inside the next not-yet-started apply_time window.
 
-def _next_run(config: AppConfig, now: datetime) -> datetime:
-    candidate = now.replace(
-        hour=config.schedule.apply_time.hour,
-        minute=config.schedule.apply_time.minute,
-        second=0,
-        microsecond=0,
-    )
-    if candidate - now <= STARTUP_GRACE:
-        candidate += timedelta(days=1)
-    return candidate
+    The window repeats daily at wall-clock times, so the target day is today
+    while `now` is still before the window start, and tomorrow otherwise.
+    The draw always covers the full window [start, end] of that day, so the
+    result is strictly in the future and the sleep stays under 48 hours.
+    """
+    window = config.schedule.apply_time
+    start_minute = window.start.hour * 60 + window.start.minute
+    end_minute = window.end.hour * 60 + window.end.minute
+    day = now.date()
+    if now >= datetime.combine(day, window.start, tzinfo=now.tzinfo):
+        day += timedelta(days=1)
+    minute = rng.randint(start_minute, end_minute)
+    return datetime.combine(day, time(minute // 60, minute % 60), tzinfo=now.tzinfo)
 
 
 async def _run_once(config: AppConfig, settings: Settings, *, dry_run: bool) -> RunSummary:
@@ -38,12 +43,16 @@ async def _run_once(config: AppConfig, settings: Settings, *, dry_run: bool) -> 
 
 
 async def run_daemon(paths: list[Path], settings: Settings, *, once: bool = False, dry_run: bool = False) -> None:
-    """Run immediately, then repeat daily at schedule.apply_time local time.
+    """Run immediately, then repeat daily at a random time inside schedule.apply_time.
 
     The YAML config is reloaded from `paths` before every run, including the
     first one; a failed reload counts as a failed run (retry_minutes pause)
-    and the previously loaded config is never applied again.
+    and the previously loaded config is never applied again. After a
+    successful run the next wake-up is drawn from the full apply_time window
+    of the next not-yet-started day: today while the run finished before the
+    window start, tomorrow otherwise.
     """
+    rng = random.Random()
     config: AppConfig | None = None
     while True:
         try:
@@ -67,9 +76,19 @@ async def run_daemon(paths: list[Path], settings: Settings, *, once: bool = Fals
         zone = ZoneInfo(config.timezone)
         now = datetime.now(zone)
         if summary.ok:
-            next_run = _next_run(config, now)
+            next_run = _next_run(config, now, rng)
             pause = next_run - now
-            logger.info("Next run at %s (in %s).", next_run.strftime("%H:%M"), _format_pause(pause))
+            window = config.schedule.apply_time
+            if window.start == window.end:
+                logger.info("Next run at %s (in %s).", next_run.strftime("%H:%M"), _format_pause(pause))
+            else:
+                logger.info(
+                    "Next run at %s (in %s, window %s-%s).",
+                    next_run.strftime("%H:%M"),
+                    _format_pause(pause),
+                    window.start.strftime("%H:%M"),
+                    window.end.strftime("%H:%M"),
+                )
         else:
             pause = timedelta(minutes=config.schedule.retry_minutes)
             logger.info("Retrying in %d minutes.", config.schedule.retry_minutes)
